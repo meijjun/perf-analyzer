@@ -1,0 +1,32 @@
+analysis:
+  default_model: qwen-max
+  default_provider: aliyun
+  timeout: 120
+llm:
+  aliyun:
+    api_key: ''
+    enabled: true
+  baidu:
+    api_key: ''
+    enabled: false
+    secret_key: ''
+  deepseek:
+    api_key: ''
+    enabled: true
+  zhipu:
+    api_key: ''
+    enabled: true
+server:
+  debug: true
+  host: 0.0.0.0
+  port: 5000
+targets:
+- auth: key
+  created_at: '2026-04-21T15:30:34.423450'
+  host: 192.168.1.100
+  id: '20260421153034'
+  name: test-server
+  password: ''
+  port: 22
+  protocol: ssh
+  username: root

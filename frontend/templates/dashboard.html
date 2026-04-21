@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时监控仪表板 - Linux 性能分析器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { color: #333; font-size: 24px; }
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .status-healthy { background: #e7f7ef; color: #52c41a; }
+        .status-warning { background: #fff7e6; color: #fa8c16; }
+        .status-critical { background: #fff1f0; color: #f5222d; }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .metric-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .metric-chart {
+            height: 60px;
+            margin-top: 12px;
+        }
+        .progress-bar {
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .progress-green { background: #52c41a; }
+        .progress-orange { background: #fa8c16; }
+        .progress-red { background: #f5222d; }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        .chart-card, .alert-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #667eea;
+        }
+        .alert-item {
+            padding: 12px;
+            border-left: 4px solid #f5222d;
+            background: #fff1f0;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        .alert-item.warning {
+            border-left-color: #fa8c16;
+            background: #fff7e6;
+        }
+        .alert-time {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: transform 0.3s;
+        }
+        .refresh-btn:hover { transform: scale(1.1); }
+        .refresh-btn.spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <!-- 头部 -->
+            <div class="header">
+                <div>
+                    <h1>📊 实时监控仪表板</h1>
+                    <p style="color: #666; font-size: 14px; margin-top: 4px;">
+                        最后更新：{{ lastUpdate }}
+                    </p>
+                </div>
+                <div class="status-badge" :class="'status-' + status">
+                    {{ statusText }}
+                </div>
+            </div>
+            
+            <!-- 指标卡片 -->
+            <div class="dashboard-grid">
+                <!-- CPU -->
+                <div class="metric-card">
+                    <div class="metric-title">🔥 CPU 使用率</div>
+                    <div class="metric-value">{{ metrics.cpu_usage }}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" 
+                             :class="getProgressClass(metrics.cpu_usage)"
+                             :style="{ width: metrics.cpu_usage + '%' }"></div>
+                    </div>
+                    <div style="font-size: 12px; color: #999; margin-top: 8px;">
+                        负载：{{ metrics.load_avg }}
+                    </div>
+                </div>
+                
+                <!-- 内存 -->
+                <div class="metric-card">
+                    <div class="metric-title">💾 内存使用率</div>
+                    <div class="metric-value">{{ metrics.memory_usage }}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" 
+                             :class="getProgressClass(metrics.memory_usage)"
+                             :style="{ width: metrics.memory_usage + '%' }"></div>
+                    </div>
+                    <div style="font-size: 12px; color: #999; margin-top: 8px;">
+                        Swap: {{ metrics.swap_usage }}%
+                    </div>
+                </div>
+                
+                <!-- 磁盘 -->
+                <div class="metric-card">
+                    <div class="metric-title">💿 磁盘使用率</div>
+                    <div class="metric-value">{{ metrics.disk_usage }}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" 
+                             :class="getProgressClass(metrics.disk_usage)"
+                             :style="{ width: metrics.disk_usage + '%' }"></div>
+                    </div>
+                    <div style="font-size: 12px; color: #999; margin-top: 8px;">
+                        {{ metrics.disk_partitions }} 个分区
+                    </div>
+                </div>
+                
+                <!-- 健康评分 -->
+                <div class="metric-card">
+                    <div class="metric-title">❤️ 健康评分</div>
+                    <div class="metric-value">{{ health_score }}</div>
+                    <div style="font-size: 14px; margin-top: 8px;">
+                        <el-tag :type="healthScoreType" size="small">
+                            {{ healthScoreText }}
+                        </el-tag>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主内容区 -->
+            <div class="main-grid">
+                <!-- 图表区 -->
+                <div class="chart-card">
+                    <div class="section-title">📈 性能趋势</div>
+                    <div ref="chartRef" style="height: 300px;"></div>
+                </div>
+                
+                <!-- 告警列表 -->
+                <div class="alert-card">
+                    <div class="section-title">🚨 最近告警</div>
+                    <div v-if="!alerts || alerts.length === 0" style="text-align: center; color: #999; padding: 40px;">
+                        暂无告警
+                    </div>
+                    <div v-for="alert in alerts" :key="alert.timestamp" 
+                         class="alert-item"
+                         :class="{ warning: alert.level === 'warning' }">
+                        <div style="font-weight: 600;">
+                            {{ alert.level === 'critical' ? '🔴' : '🟡' }}
+                            {{ alert.message }}
+                        </div>
+                        <div class="alert-time">{{ formatTime(alert.timestamp) }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 刷新按钮 -->
+        <button class="refresh-btn" @click="refreshData" :class="{ spinning: loading }">
+            🔄
+        </button>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.1.0/dist/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    
+    <script>
+        const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+        const { ElMessage } = ElementPlus;
+        
+        const app = createApp({
+            setup() {
+                const lastUpdate = ref('刚刚');
+                const status = ref('healthy');
+                const metrics = ref({
+                    cpu_usage: 0,
+                    memory_usage: 0,
+                    swap_usage: 0,
+                    disk_usage: 0,
+                    load_avg: 0,
+                    disk_partitions: 0
+                });
+                const health_score = ref(100);
+                const alerts = ref([]);
+                const loading = ref(false);
+                const chartRef = ref(null);
+                let chart = null;
+                let timer = null;
+                
+                const statusText = computed(() => {
+                    if (status.value === 'healthy') return '✅ 系统健康';
+                    if (status.value === 'warning') return '⚠️ 注意';
+                    return '🔴 严重';
+                });
+                
+                const healthScoreType = computed(() => {
+                    if (health_score.value >= 80) return 'success';
+                    if (health_score.value >= 60) return 'warning';
+                    return 'danger';
+                });
+                
+                const healthScoreText = computed(() => {
+                    if (health_score.value >= 80) return '良好';
+                    if (health_score.value >= 60) return '一般';
+                    return '较差';
+                });
+                
+                const getProgressClass = (value) => {
+                    if (value < 70) return 'progress-green';
+                    if (value < 90) return 'progress-orange';
+                    return 'progress-red';
+                };
+                
+                const refreshData = async () => {
+                    loading.value = true;
+                    try {
+                        // 获取摘要
+                        const summaryRes = await fetch('/api/monitor/summary');
+                        const summaryData = await summaryRes.json();
+                        if (summaryData.success) {
+                            const summary = summaryData.data;
+                            status.value = summary.status;
+                            health_score.value = summary.health_score;
+                        }
+                        
+                        // 获取当前指标
+                        const metricsRes = await fetch('/api/monitor/current');
+                        const metricsData = await metricsRes.json();
+                        if (metricsData.success) {
+                            const m = metricsData.data;
+                            metrics.value = {
+                                cpu_usage: m.cpu?.usage_percent || 0,
+                                memory_usage: m.memory?.usage_percent || 0,
+                                swap_usage: m.memory?.swap_usage_percent || 0,
+                                disk_usage: m.disk?.partitions?.[0]?.usage_percent || 0,
+                                load_avg: m.cpu?.load_avg_1m?.toFixed(2) || 0,
+                                disk_partitions: m.disk?.partitions?.length || 0
+                            };
+                        }
+                        
+                        // 获取告警
+                        const alertsRes = await fetch('/api/monitor/alerts?limit=10');
+                        const alertsData = await alertsRes.json();
+                        if (alertsData.success) {
+                            alerts.value = alertsData.data;
+                        }
+                        
+                        // 获取历史数据（用于图表）
+                        const historyRes = await fetch('/api/monitor/history?minutes=10');
+                        const historyData = await historyRes.json();
+                        if (historyData.success) {
+                            updateChart(historyData.data);
+                        }
+                        
+                        lastUpdate.value = new Date().toLocaleTimeString();
+                    } catch (e) {
+                        console.error('刷新失败:', e);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+                
+                const updateChart = (history) => {
+                    if (!chart) return;
+                    
+                    const times = history.map(h => {
+                        const t = new Date(h.timestamp);
+                        return `${t.getMinutes()}:${t.getSeconds().toString().padStart(2, '0')}`;
+                    });
+                    
+                    const cpuData = history.map(h => h.metrics?.cpu?.usage_percent || 0);
+                    const memData = history.map(h => h.metrics?.memory?.usage_percent || 0);
+                    
+                    chart.setOption({
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['CPU', '内存'] },
+                        xAxis: { type: 'category', data: times },
+                        yAxis: { type: 'value', max: 100 },
+                        series: [
+                            { name: 'CPU', type: 'line', data: cpuData, smooth: true, itemStyle: { color: '#667eea' } },
+                            { name: '内存', type: 'line', data: memData, smooth: true, itemStyle: { color: '#764ba2' } }
+                        ]
+                    });
+                };
+                
+                const formatTime = (timestamp) => {
+                    const t = new Date(timestamp);
+                    return t.toLocaleTimeString();
+                };
+                
+                onMounted(() => {
+                    // 初始化图表
+                    if (chartRef.value) {
+                        chart = echarts.init(chartRef.value);
+                    }
+                    
+                    // 首次加载
+                    refreshData();
+                    
+                    // 定时刷新（每 5 秒）
+                    timer = setInterval(refreshData, 5000);
+                });
+                
+                onUnmounted(() => {
+                    if (timer) clearInterval(timer);
+                    if (chart) chart.dispose();
+                });
+                
+                return {
+                    lastUpdate,
+                    status,
+                    metrics,
+                    health_score,
+                    alerts,
+                    loading,
+                    chartRef,
+                    statusText,
+                    healthScoreType,
+                    healthScoreText,
+                    getProgressClass,
+                    refreshData,
+                    formatTime
+                };
+            }
+        });
+        
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>

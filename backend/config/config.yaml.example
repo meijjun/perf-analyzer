@@ -1,0 +1,54 @@
+# Linux 性能分析器配置文件（示例）
+# 复制此文件为 config.yaml 并填入你的 API Key
+
+llm:
+  # 阿里云通义千问 (https://dashscope.console.aliyun.com/)
+  aliyun:
+    api_key: "sk-your-api-key-here"
+    enabled: true
+  
+  # DeepSeek (https://platform.deepseek.com/)
+  deepseek:
+    api_key: "your-api-key-here"
+    enabled: true
+  
+  # 智谱 AI (https://open.bigmodel.cn/)
+  zhipu:
+    api_key: "your-api-key-here"
+    enabled: true
+  
+  # 百度文心一言 (https://console.bce.baidu.com/)
+  baidu:
+    api_key: "your-api-key"
+    secret_key: "your-secret-key"
+    enabled: false
+  
+  # 自定义模型（OpenAI 兼容）
+  custom:
+    api_url: "https://api.example.com/v1/"
+    api_key: "your-api-key"
+    model_name: "gpt-3.5-turbo"
+    enabled: false
+
+# 分析配置
+analysis:
+  default_provider: "aliyun"
+  default_model: "qwen-max"
+  timeout: 120
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false  # 生产环境设为 false
+
+# 目标设备配置（可选，也可通过 Web 界面添加）
+targets:
+  # - id: "server1"
+  #   name: "生产服务器 1"
+  #   host: "192.168.1.100"
+  #   port: 22
+  #   protocol: "ssh"
+  #   username: "admin"
+  #   auth: "key"
+  #   key_path: "~/.ssh/id_rsa"

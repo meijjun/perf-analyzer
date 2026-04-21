@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux 性能分析器 - Web 版</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.css">
+    {# 禁用 Jinja2 自动处理，让 Vue 使用 {{ }} #}
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+        
+        .sidebar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            height: fit-content;
+        }
+        
+        .content-area {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            min-height: 600px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .target-item {
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .target-item:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+        
+        .target-item.selected {
+            border-color: #667eea;
+            background: #e8ecff;
+        }
+        
+        .target-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        
+        .target-host {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-card {
+            background: #f5f7ff;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+        
+        .step-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 12px;
+        }
+        
+        .step-icon.completed {
+            background: #52c41a;
+        }
+        
+        .step-icon.active {
+            background: #667eea;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .report-content {
+            background: #fafafa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .model-selector {
+            margin-bottom: 20px;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 12px;
+        }
+        
+        .nav-tab {
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #666;
+        }
+        
+        .nav-tab:hover {
+            background: #f5f7ff;
+            color: #667eea;
+        }
+        
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <!-- 头部 -->
+            <div class="header">
+                <h1>🚀 Linux 性能分析器 <span class="skill-badge">Powered by linux-performance-analyzer Skill</span></h1>
+                <p>基于大模型的智能性能分析平台 - 支持多模型切换 + 专业知识库</p>
+            </div>
+            
+            <div class="main-content">
+                <!-- 侧边栏 -->
+                <div class="sidebar">
+                    <div class="section-title">📍 目标设备</div>
+                    
+                    <el-button type="primary" size="small" @click="showAddTargetDialog" style="width: 100%; margin-bottom: 16px;">
+                        <el-icon style="margin-right: 4px;"><Plus /></el-icon>
+                        添加设备
+                    </el-button>
+                    
+                    <div v-for="target in (targets || [])" :key="target.id" 
+                         class="target-item"
+                         :class="{ selected: selectedTarget && selectedTarget.id === target.id }"
+                         @click="selectTarget(target)">
+                        <div class="target-name">{{ target.name }}</div>
+                        <div class="target-host">{{ target.host }}:{{ target.port }}</div>
+                        <div style="font-size: 12px; color: #999; margin-top: 4px;">
+                            {{ target.protocol }} / {{ target.username }}
+                        </div>
+                    </div>
+                    
+                    <div v-if="!targets || targets.length === 0" style="text-align: center; color: #999; padding: 20px;">
+                        暂无目标设备<br>请点击"添加设备"
+                    </div>
+                </div>
+                
+                <!-- 主内容区 -->
+                <div class="content-area">
+                    <!-- 导航标签 -->
+                    <div class="nav-tabs">
+                        <div class="nav-tab active" @click="currentTab = 'analysis'">🔍 性能分析</div>
+                        <div class="nav-tab" @click="currentTab = 'history'; loadReports()">📄 历史报告</div>
+                        <div class="nav-tab" @click="currentTab = 'settings'">⚙️ 模型设置</div>
+                    </div>
+                    
+                    <!-- 分析页面 -->
+                    <div v-if="currentTab === 'analysis'">
+                        <div class="section-title">🎯 选择分析模型</div>
+                        
+                        <div class="model-selector">
+                            <el-row :gutter="20">
+                                <el-col :span="12">
+                                    <el-select v-model="selectedProvider" placeholder="选择大模型提供商" style="width: 100%;" @change="onProviderChange">
+                                        <el-option v-for="provider in providers" :key="provider.name" :label="provider.name" :value="provider.name">
+                                            <span>{{ getProviderLabel(provider.name) }}</span>
+                                        </el-option>
+                                    </el-select>
+                                </el-col>
+                                <el-col :span="12">
+                                    <el-select v-model="selectedModel" placeholder="选择模型" style="width: 100%;">
+                                        <el-option v-for="model in (availableModels || [])" :key="model" :label="model" :value="model" />
+                                    </el-select>
+                                </el-col>
+                            </el-row>
+                        </div>
+                        
+                        <div v-if="selectedTarget" style="margin: 20px 0;">
+                            <div style="padding: 16px; background: #f5f7ff; border-radius: 8px;">
+                                <div style="font-weight: 600; margin-bottom: 8px;">📍 当前目标</div>
+                                <div><strong>名称:</strong> {{ selectedTarget.name }}</div>
+                                <div><strong>主机:</strong> {{ selectedTarget.host }}:{{ selectedTarget.port }}</div>
+                                <div><strong>协议:</strong> {{ selectedTarget.protocol }}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 24px;">
+                            <el-button type="primary" size="large" @click="startAnalysis" :disabled="!selectedTarget || analyzing" style="width: 100%;">
+                                <el-icon v-if="analyzing" style="margin-right: 8px;"><Loading /></el-icon>
+                                <el-icon v-else style="margin-right: 8px;"><Rocket /></el-icon>
+                                {{ analyzing ? '分析中...' : '开始分析' }}
+                            </el-button>
+                        </div>
+                        
+                        <!-- 进度显示 -->
+                        <div v-if="analyzing || taskStatus" class="progress-card">
+                            <div style="margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <span>进度</span>
+                                    <span>{{ taskProgress }}%</span>
+                                </div>
+                                <el-progress :percentage="taskProgress" :status="taskStatus === 'completed' ? 'success' : taskStatus === 'failed' ? 'exception' : ''" />
+                            </div>
+                            
+                            <div class="step-item">
+                                <div class="step-icon" :class="{ completed: taskProgress >= 20, active: taskProgress > 0 && taskProgress < 20 }">1</div>
+                                <span>连接设备</span>
+                            </div>
+                            <div class="step-item">
+                                <div class="step-icon" :class="{ completed: taskProgress >= 40, active: taskProgress >= 20 && taskProgress < 40 }">2</div>
+                                <span>收集数据</span>
+                            </div>
+                            <div class="step-item">
+                                <div class="step-icon" :class="{ completed: taskProgress >= 70, active: taskProgress >= 40 && taskProgress < 70 }">3</div>
+                                <span>大模型分析</span>
+                            </div>
+                            <div class="step-item">
+                                <div class="step-icon" :class="{ completed: taskProgress >= 100, active: taskProgress >= 70 && taskProgress < 100 }">4</div>
+                                <span>生成报告</span>
+                            </div>
+                            
+                            <div v-if="currentStep" style="margin-top: 16px; padding: 12px; background: white; border-radius: 6px;">
+                                <strong>当前状态:</strong> {{ currentStep }}
+                            </div>
+                        </div>
+                        
+                        <!-- 报告内容 -->
+                        <div v-if="reportContent" class="report-content">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <div class="section-title" style="margin: 0; border: none;">📊 分析报告</div>
+                                <el-button size="small" @click="downloadReport">
+                                    <el-icon style="margin-right: 4px;"><Download /></el-icon>
+                                    下载报告
+                                </el-button>
+                            </div>
+                            <div v-html="renderedReport" style="line-height: 1.8;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 历史报告页面 -->
+                    <div v-if="currentTab === 'history'">
+                        <div class="section-title">📄 历史报告</div>
+                        <el-table :data="reports" style="width: 100%">
+                            <el-table-column prop="filename" label="文件名" />
+                            <el-table-column prop="created_at" label="创建时间" width="180" />
+                            <el-table-column prop="size" label="大小" width="100">
+                                <template #default="{ row }">
+                                    {{ (row.size / 1024).toFixed(1) }} KB
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="150">
+                                <template #default="{ row }">
+                                    <el-button size="small" @click="viewReport(row.filename)">查看</el-button>
+                                    <el-button size="small" type="danger" @click="deleteReport(row.filename)">删除</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </div>
+                    
+                    <!-- 参考文档页面 -->
+                    <div v-if="currentTab === 'knowledge'">
+                        <div class="section-title">📚 参考文档</div>
+                        
+                        <el-alert title="基于 linux-performance-analyzer Skill 知识库" type="success" :closable="false" style="margin-bottom: 20px;" />
+                        
+                        <el-row :gutter="20">
+                            <el-col :span="12" v-for="doc in knowledgeDocs" :key="doc.name">
+                                <el-card shadow="hover" style="margin-bottom: 16px;">
+                                    <template #header>
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-weight: 600;">{{ doc.icon }} {{ doc.name }}</span>
+                                            <el-tag size="small" :type="doc.type">{{ doc.category }}</el-tag>
+                                        </div>
+                                    </template>
+                                    <div style="font-size: 13px; color: #666; line-height: 1.6;">
+                                        {{ doc.description }}
+                                    </div>
+                                    <div style="margin-top: 12px;">
+                                        <el-button size="small" type="primary" @click="viewDoc(doc.file)">查看文档</el-button>
+                                        <el-button size="small" v-if="doc.commands" @click="showCommands(doc.name)">快速命令</el-button>
+                                    </div>
+                                </el-card>
+                            </el-col>
+                        </el-row>
+                        
+                        <!-- 文档查看对话框 -->
+                        <el-dialog v-model="docDialogVisible" title="参考文档" width="800px" top="5vh">
+                            <div v-html="renderedDocContent" style="max-height: 60vh; overflow-y: auto; line-height: 1.8;"></div>
+                        </el-dialog>
+                        
+                        <!-- 快速命令对话框 -->
+                        <el-dialog v-model="commandsDialogVisible" title="快速诊断命令" width="700px">
+                            <el-table :data="quickCommands" style="width: 100%">
+                                <el-table-column prop="desc" label="描述" width="200" />
+                                <el-table-column prop="cmd" label="命令">
+                                    <template #default="{ row }">
+                                        <code style="background: #f5f7ff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">{{ row.cmd }}</code>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="操作" width="100">
+                                    <template #default="{ row }">
+                                        <el-button size="small" @click="copyCommand(row.cmd)">复制</el-button>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </el-dialog>
+                    </div>
+                    
+                    <!-- 设置页面 -->
+                    <div v-if="currentTab === 'settings'">
+                        <div class="section-title">⚙️ 大模型配置</div>
+                        <el-alert title="配置您的大模型 API 密钥" type="info" :closable="false" style="margin-bottom: 20px;" />
+                        
+                        <el-form label-width="120px">
+                            <el-divider content-position="left">阿里云通义千问</el-divider>
+                            <el-form-item label="API Key">
+                                <el-input v-model="llmConfig.aliyun.api_key" type="password" placeholder="请输入阿里云 API Key" />
+                            </el-form-item>
+                            
+                            <el-divider content-position="left">DeepSeek</el-divider>
+                            <el-form-item label="API Key">
+                                <el-input v-model="llmConfig.deepseek.api_key" type="password" placeholder="请输入 DeepSeek API Key" />
+                            </el-form-item>
+                            
+                            <el-divider content-position="left">智谱 AI</el-divider>
+                            <el-form-item label="API Key">
+                                <el-input v-model="llmConfig.zhipu.api_key" type="password" placeholder="请输入智谱 AI API Key" />
+                            </el-form-item>
+                            
+                            <el-divider content-position="left">百度文心一言</el-divider>
+                            <el-form-item label="API Key">
+                                <el-input v-model="llmConfig.baidu.api_key" type="password" placeholder="请输入百度 API Key" />
+                            </el-form-item>
+                            <el-form-item label="Secret Key">
+                                <el-input v-model="llmConfig.baidu.secret_key" type="password" placeholder="请输入百度 Secret Key" />
+                            </el-form-item>
+                            
+                            <el-divider content-position="left">自定义模型</el-divider>
+                            <el-form-item label="API 端点">
+                                <el-input v-model="llmConfig.custom.api_url" placeholder="https://api.example.com/v1/chat/completions" />
+                            </el-form-item>
+                            <el-form-item label="API Key">
+                                <el-input v-model="llmConfig.custom.api_key" type="password" placeholder="请输入 API Key" />
+                            </el-form-item>
+                            <el-form-item label="模型名称">
+                                <el-input v-model="llmConfig.custom.model_name" placeholder="gpt-3.5-turbo 或其他模型" />
+                            </el-form-item>
+                            <el-alert title="自定义模型需兼容 OpenAI API 格式" type="info" :closable="false" style="font-size: 12px;" />
+                            
+                            <el-form-item>
+                                <el-button type="primary" @click="saveConfig">保存配置</el-button>
+                            </el-form-item>
+                        </el-form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 添加设备对话框 -->
+        <el-dialog v-model="addTargetDialogVisible" title="添加目标设备" width="500px">
+            <el-form :model="newTarget" label-width="80px">
+                <el-form-item label="名称" required>
+                    <el-input v-model="newTarget.name" placeholder="设备名称" />
+                </el-form-item>
+                <el-form-item label="主机" required>
+                    <el-input v-model="newTarget.host" placeholder="IP 地址或域名" />
+                </el-form-item>
+                <el-form-item label="端口">
+                    <el-input-number v-model="newTarget.port" :min="1" :max="65535" :value="22" />
+                </el-form-item>
+                <el-form-item label="协议">
+                    <el-select v-model="newTarget.protocol" style="width: 100%;">
+                        <el-option label="SSH" value="ssh" />
+                        <el-option label="Telnet" value="telnet" />
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="用户名" required>
+                    <el-input v-model="newTarget.username" placeholder="SSH 用户名" />
+                </el-form-item>
+                <el-form-item label="认证方式">
+                    <el-radio-group v-model="newTarget.auth">
+                        <el-radio label="key">密钥</el-radio>
+                        <el-radio label="password">密码</el-radio>
+                    </el-radio-group>
+                </el-form-item>
+                <el-form-item v-if="newTarget.auth === 'key'" label="密钥路径">
+                    <el-input v-model="newTarget.key_path" placeholder="~/.ssh/id_rsa" />
+                </el-form-item>
+                <el-form-item v-if="newTarget.auth === 'password'" label="密码">
+                    <el-input v-model="newTarget.password" type="password" placeholder="密码" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="addTargetDialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="addTarget">添加</el-button>
+            </template>
+        </el-dialog>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.1.0/dist/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+        const { ElMessage, ElMessageBox } = ElementPlus;
+        
+        const app = createApp({
+            setup() {
+                // 状态 - 所有数组初始化为空数组，避免 null.length 错误
+                const targets = ref([]);
+                const selectedTarget = ref(null);
+                const providers = ref([]);
+                const availableModels = ref([]);
+                const selectedProvider = ref('aliyun');
+                const selectedModel = ref('qwen-max');
+                const analyzing = ref(false);
+                const taskStatus = ref(null);
+                const taskProgress = ref(0);
+                const currentStep = ref('');
+                const reportContent = ref('');
+                const currentTab = ref('analysis');
+                const reports = ref([]);
+                const llmConfig = ref({
+                    aliyun: { api_key: '', enabled: true },
+                    deepseek: { api_key: '', enabled: true },
+                    zhipu: { api_key: '', enabled: true },
+                    baidu: { api_key: '', secret_key: '', enabled: false },
+                    custom: { api_url: '', api_key: '', model_name: '', enabled: false }
+                });
+                
+                // 知识库相关
+                const knowledgeDocs = ref([
+                    { name: 'CPU 调优', icon: '🔥', file: 'cpu.md', category: 'CPU', type: 'danger' },
+                    { name: '内存调优', icon: '💾', file: 'memory.md', category: '内存', type: 'warning' },
+                    { name: '磁盘 I/O', icon: '💿', file: 'disk_io.md', category: '磁盘', type: 'info' },
+                    { name: '网络调优', icon: '🌐', file: 'network.md', category: '网络', type: 'success' },
+                    { name: '内核参数', icon: '⚙️', file: 'kernel_params.md', category: '内核', type: '' },
+                    { name: '编译优化', icon: '🛠️', file: 'compile_optimization.md', category: '编译', type: '' },
+                    { name: '实战案例', icon: '📊', file: 'case_studies.md', category: '案例', type: '' }
+                ]);
+                const docContent = ref('');
+                const docDialogVisible = ref(false);
+                const commandsDialogVisible = ref(false);
+                const quickCommands = ref([]);
+                const renderedDocContent = computed(() => marked.parse(docContent.value || ''));
+                
+                // 对话框
+                const addTargetDialogVisible = ref(false);
+                const newTarget = ref({
+                    name: '',
+                    host: '',
+                    port: 22,
+                    protocol: 'ssh',
+                    username: '',
+                    auth: 'key',
+                    key_path: '~/.ssh/id_rsa',
+                    password: ''
+                });
+                
+                // 加载数据
+                const loadData = async () => {
+                    await loadTargets();
+                    await loadProviders();
+                    await loadConfig();
+                };
+                
+                const loadTargets = async () => {
+                    try {
+                        const res = await fetch('/api/targets');
+                        const data = await res.json();
+                        if (data.success) {
+                            targets.value = data.data;
+                        }
+                    } catch (e) {
+                        console.error('加载目标设备失败:', e);
+                    }
+                };
+                
+                const loadProviders = async () => {
+                    try {
+                        const res = await fetch('/api/llm/providers');
+                        const data = await res.json();
+                        if (data.success) {
+                            providers.value = data.data;
+                            if (data.data.length > 0) {
+                                selectedProvider.value = data.data[0].name;
+                                availableModels.value = data.data[0].models;
+                                selectedModel.value = data.data[0].models[0];
+                            }
+                        }
+                    } catch (e) {
+                        console.error('加载提供商失败:', e);
+                    }
+                };
+                
+                const loadConfig = async () => {
+                    try {
+                        const res = await fetch('/api/config/llm');
+                        const data = await res.json();
+                        if (data.success) {
+                            // 合并配置，确保所有字段都存在
+                            llmConfig.value = {
+                                aliyun: { api_key: '', enabled: true, ...(data.data.aliyun || {}) },
+                                deepseek: { api_key: '', enabled: true, ...(data.data.deepseek || {}) },
+                                zhipu: { api_key: '', enabled: true, ...(data.data.zhipu || {}) },
+                                baidu: { api_key: '', secret_key: '', enabled: false, ...(data.data.baidu || {}) },
+                                custom: { api_url: '', api_key: '', model_name: '', enabled: false, ...(data.data.custom || {}) }
+                            };
+                        }
+                    } catch (e) {
+                        console.error('加载配置失败:', e);
+                    }
+                };
+                
+                const loadReports = async () => {
+                    try {
+                        const res = await fetch('/api/reports');
+                        const data = await res.json();
+                        if (data.success) {
+                            reports.value = data.data;
+                        }
+                    } catch (e) {
+                        console.error('加载报告失败:', e);
+                    }
+                };
+                
+                // 知识库相关函数
+                const viewDoc = async (filename) => {
+                    try {
+                        const res = await fetch(`/api/docs/${filename}`);
+                        const data = await res.json();
+                        if (data.success) {
+                            docContent.value = data.data;
+                            docDialogVisible.value = true;
+                        } else {
+                            ElMessage.error('加载文档失败');
+                        }
+                    } catch (e) {
+                        ElMessage.error('加载文档失败');
+                    }
+                };
+                
+                const showCommands = async (category) => {
+                    const scenarioMap = {'CPU': 'cpu', '内存': 'memory', '磁盘': 'disk', '网络': 'network'};
+                    const scenario = scenarioMap[category];
+                    if (scenario) {
+                        try {
+                            const res = await fetch(`/api/analysis/quick-commands?scenario=${scenario}`);
+                            const data = await res.json();
+                            if (data.success) {
+                                quickCommands.value = data.data;
+                                commandsDialogVisible.value = true;
+                            }
+                        } catch (e) {
+                            ElMessage.error('加载命令失败');
+                        }
+                    }
+                };
+                
+                const copyCommand = (cmd) => {
+                    navigator.clipboard.writeText(cmd);
+                    ElMessage.success('命令已复制');
+                };
+                
+                // 方法
+                const selectTarget = (target) => {
+                    selectedTarget.value = target;
+                };
+                
+                const showAddTargetDialog = () => {
+                    newTarget.value = {
+                        name: '',
+                        host: '',
+                        port: 22,
+                        protocol: 'ssh',
+                        username: '',
+                        auth: 'key',
+                        key_path: '~/.ssh/id_rsa',
+                        password: ''
+                    };
+                    addTargetDialogVisible.value = true;
+                };
+                
+                const addTarget = async () => {
+                    try {
+                        const res = await fetch('/api/targets', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newTarget.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('设备添加成功');
+                            addTargetDialogVisible.value = false;
+                            await loadTargets();
+                        } else {
+                            ElMessage.error(data.error || '添加失败');
+                        }
+                    } catch (e) {
+                        ElMessage.error('添加失败');
+                    }
+                };
+                
+                const onProviderChange = (provider) => {
+                    const p = providers.value.find(x => x.name === provider);
+                    if (p) {
+                        availableModels.value = p.models;
+                        selectedModel.value = p.models[0];
+                    }
+                };
+                
+                const getProviderLabel = (name) => {
+                    const labels = {
+                        'aliyun': '阿里云 - 通义千问',
+                        'deepseek': '深度求索 - DeepSeek',
+                        'zhipu': '智谱 AI - ChatGLM',
+                        'baidu': '百度 - 文心一言'
+                    };
+                    return labels[name] || name;
+                };
+                
+                const startAnalysis = async () => {
+                    if (!selectedTarget.value) {
+                        ElMessage.warning('请选择目标设备');
+                        return;
+                    }
+                    
+                    analyzing.value = true;
+                    taskStatus.value = null;
+                    taskProgress.value = 0;
+                    currentStep.value = '';
+                    reportContent.value = '';
+                    
+                    try {
+                        const res = await fetch('/api/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                target_id: selectedTarget.value.id,
+                                provider: selectedProvider.value,
+                                model: selectedModel.value
+                            })
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            const taskId = data.task_id;
+                            ElMessage.success('分析任务已启动');
+                            pollTaskStatus(taskId);
+                        } else {
+                            ElMessage.error(data.error || '启动失败');
+                            analyzing.value = false;
+                        }
+                    } catch (e) {
+                        ElMessage.error('启动失败');
+                        analyzing.value = false;
+                    }
+                };
+                
+                const pollTaskStatus = async (taskId) => {
+                    const poll = async () => {
+                        try {
+                            const res = await fetch(`/api/tasks/${taskId}`);
+                            const data = await res.json();
+                            
+                            if (data.success) {
+                                const task = data.data;
+                                taskProgress.value = task.progress;
+                                currentStep.value = task.current_step;
+                                taskStatus.value = task.status;
+                                
+                                if (task.status === 'completed') {
+                                    analyzing.value = false;
+                                    ElMessage.success('分析完成');
+                                    await loadTaskReport(taskId);
+                                } else if (task.status === 'failed') {
+                                    analyzing.value = false;
+                                    ElMessage.error(task.error || '分析失败');
+                                } else {
+                                    setTimeout(poll, 2000);
+                                }
+                            }
+                        } catch (e) {
+                            setTimeout(poll, 2000);
+                        }
+                    };
+                    poll();
+                };
+                
+                const loadTaskReport = async (taskId) => {
+                    try {
+                        const res = await fetch(`/api/tasks/${taskId}/report`);
+                        const data = await res.json();
+                        if (data.success) {
+                            reportContent.value = data.data.content;
+                        }
+                    } catch (e) {
+                        console.error('加载报告失败:', e);
+                    }
+                };
+                
+                const viewReport = async (filename) => {
+                    try {
+                        const res = await fetch(`/api/reports/${filename}`);
+                        const data = await res.json();
+                        if (data.success) {
+                            reportContent.value = data.data.content;
+                            currentTab.value = 'analysis';
+                        }
+                    } catch (e) {
+                        ElMessage.error('加载报告失败');
+                    }
+                };
+                
+                const deleteReport = async (filename) => {
+                    try {
+                        await ElMessageBox.confirm('确定删除该报告？', '提示', { type: 'warning' });
+                        await loadReports();
+                        ElMessage.success('删除成功');
+                    } catch (e) {
+                        if (e !== 'cancel') {
+                            ElMessage.error('删除失败');
+                        }
+                    }
+                };
+                
+                const saveConfig = async () => {
+                    try {
+                        const res = await fetch('/api/config/llm', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(llmConfig.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('配置保存成功');
+                            await loadProviders();
+                        } else {
+                            ElMessage.error(data.error || '保存失败');
+                        }
+                    } catch (e) {
+                        ElMessage.error('保存失败');
+                    }
+                };
+                
+                const downloadReport = () => {
+                    const blob = new Blob([reportContent.value], { type: 'text/markdown' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `perf_report_${new Date().getTime()}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                };
+                
+                const renderedReport = computed(() => marked.parse(reportContent.value || ''));
+                
+                onMounted(() => {
+                    console.log('Vue 应用已挂载');
+                    loadData();
+                });
+                
+                return {
+                    targets, selectedTarget, providers, availableModels, selectedProvider, selectedModel,
+                    analyzing, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig,
+                    knowledgeDocs, docContent, docDialogVisible, commandsDialogVisible, quickCommands, renderedReport, renderedDocContent,
+                    addTargetDialogVisible, newTarget,
+                    selectTarget, showAddTargetDialog, addTarget, onProviderChange, getProviderLabel, startAnalysis,
+                    loadReports, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport
+                };
+            }
+        });
+        
+        // 注册图标
+        for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+            app.component(key, component);
+        }
+        
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>

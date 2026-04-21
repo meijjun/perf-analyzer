@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+logs/
+*.log
+
+# 报告和数据
+reports/
+baselines/
+*.txt
+*.json
+!requirements.txt
+
+# 配置文件（敏感信息）
+backend/config/config.yaml
+backend/config/*.yaml
+!backend/config/config.yaml.example
+
+# 压缩包
+*.tar.gz
+*.zip
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 系统文件
+.DS_Store
+Thumbs.db
