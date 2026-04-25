@@ -1,0 +1,23 @@
+analysis:
+  default_model: qwen-max
+  default_provider: aliyun
+  timeout: 120
+llm:
+  aliyun:
+    api_key: ''
+    enabled: true
+  baidu:
+    api_key: ''
+    enabled: false
+    secret_key: ''
+  deepseek:
+    api_key: ''
+    enabled: true
+  zhipu:
+    api_key: ''
+    enabled: true
+server:
+  debug: true
+  host: 0.0.0.0
+  port: 5000
+targets: []

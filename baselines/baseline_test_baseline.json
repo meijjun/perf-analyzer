@@ -1,0 +1,19 @@
+{
+  "name": "test_baseline",
+  "description": "测试基线",
+  "created_at": "2026-04-19T22:38:31.078619",
+  "metrics": {
+    "cpu_usage": 0,
+    "memory_usage": 0,
+    "swap_usage": 0,
+    "load_avg_1m": 0,
+    "load_avg_5m": 0,
+    "disk_partitions": [],
+    "process_count": 0
+  },
+  "system_info": {
+    "cpu_cores": 1,
+    "memory_total_mb": 0,
+    "timestamp": ""
+  }
+}
