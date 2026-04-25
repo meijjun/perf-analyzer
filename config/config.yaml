@@ -6,18 +6,39 @@ llm:
   aliyun:
     api_key: ''
     enabled: true
+    models:
+      - qwen-max
+      - qwen-plus
+      - qwen-turbo
   baidu:
     api_key: ''
-    enabled: false
     secret_key: ''
+    enabled: false
+    models:
+      - ernie-bot-4
+      - ernie-bot-3.5
   deepseek:
     api_key: ''
     enabled: true
+    models:
+      - deepseek-chat
+      - deepseek-coder
   zhipu:
     api_key: ''
     enabled: true
+    models:
+      - glm-4
+      - glm-3-turbo
+  custom:
+    api_url: ''
+    api_key: ''
+    model_name: ''
+    enabled: false
 server:
   debug: true
   host: 0.0.0.0
   port: 5000
 targets: []
+collection:
+  default_interval: 60
+  default_max_collections: 10
