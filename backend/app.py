@@ -22,6 +22,7 @@ from services.telnet_service import TelnetService
 from services.analysis_service import AnalysisService
 from services.optimizer_service import create_optimizer
 from services.baseline_service import get_baseline_service
+from services.settings_service import get_settings_service
 from models.config import ConfigManager
 
 # 配置日志
@@ -59,6 +60,7 @@ running_tasks = {}
 
 # 初始化服务
 config_manager = ConfigManager('../config/config.yaml')
+settings_service = get_settings_service()
 llm_service = LLMService(config_manager)
 ssh_service = SSHService()
 analysis_service = AnalysisService(llm_service, ssh_service)
@@ -630,6 +632,43 @@ def internal_error(error):
         'success': False,
         'error': '服务器内部错误'
     }), 500
+
+
+# ==================== 设置 API ====================
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """获取系统设置"""
+    try:
+        settings = settings_service.get_settings()
+        return jsonify({
+            'success': True,
+            'data': settings
+        })
+    except Exception as e:
+        logger.error(f"获取设置失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """更新系统设置"""
+    try:
+        data = request.json
+        success = settings_service.update_settings(data)
+        return jsonify({
+            'success': success,
+            'message': '设置已保存' if success else '保存失败'
+        })
+    except Exception as e:
+        logger.error(f"更新设置失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
 
 
 # ==================== 主程序 ====================

@@ -248,7 +248,7 @@
                     <div class="nav-tabs">
                         <div class="nav-tab active" @click="currentTab = 'analysis'">🔍 性能分析</div>
                         <div class="nav-tab" @click="currentTab = 'history'; loadReports()">📄 历史报告</div>
-                        <div class="nav-tab" @click="currentTab = 'settings'">⚙️ 模型设置</div>
+                        <div class="nav-tab" @click="currentTab = 'settings'; loadSettings()">⚙️ 系统设置</div>
                     </div>
                     
                     <!-- 分析页面 -->
@@ -352,6 +352,48 @@
                                 </template>
                             </el-table-column>
                         </el-table>
+                    </div>
+                    
+                    <!-- 系统设置页面 -->
+                    <div v-if="currentTab === 'settings'">
+                        <div class="section-title">⚙️ 系统设置</div>
+                        
+                        <el-card style="margin-bottom: 20px;">
+                            <template #header>
+                                <div style="font-weight: 600;">📊 采集设置</div>
+                            </template>
+                            <el-form :model="settings" label-width="120px">
+                                <el-form-item label="采集时长（分钟）">
+                                    <el-input-number v-model="settings.collection.duration_minutes" :min="1" :max="120" />
+                                </el-form-item>
+                                <el-form-item label="最大采集次数">
+                                    <el-input-number v-model="settings.collection.max_collections" :min="1" :max="100" />
+                                </el-form-item>
+                                <el-form-item label="采集间隔（秒）">
+                                    <el-input-number v-model="settings.collection.interval_seconds" :min="10" :max="600" />
+                                </el-form-item>
+                                <el-form-item>
+                                    <el-button type="primary" @click="saveSettings">保存设置</el-button>
+                                </el-form-item>
+                            </el-form>
+                        </el-card>
+                        
+                        <el-card>
+                            <template #header>
+                                <div style="font-weight: 600;">🔍 分析设置</div>
+                            </template>
+                            <el-form :model="settings" label-width="120px">
+                                <el-form-item label="超时时间（秒）">
+                                    <el-input-number v-model="settings.analysis.timeout_seconds" :min="60" :max="600" />
+                                </el-form-item>
+                                <el-form-item label="最大重试次数">
+                                    <el-input-number v-model="settings.analysis.max_retries" :min="0" :max="10" />
+                                </el-form-item>
+                                <el-form-item>
+                                    <el-button type="primary" @click="saveSettings">保存设置</el-button>
+                                </el-form-item>
+                            </el-form>
+                        </el-card>
                     </div>
                     
                     <!-- 参考文档页面 -->
@@ -519,6 +561,17 @@
                 const reportContent = ref('');
                 const currentTab = ref('analysis');
                 const reports = ref([]);
+                const settings = ref({
+                    collection: {
+                        duration_minutes: 10,
+                        max_collections: 10,
+                        interval_seconds: 60
+                    },
+                    analysis: {
+                        timeout_seconds: 300,
+                        max_retries: 3
+                    }
+                });
                 const llmConfig = ref({
                     aliyun: { api_key: '', enabled: true },
                     deepseek: { api_key: '', enabled: true },
@@ -620,6 +673,37 @@
                         }
                     } catch (e) {
                         console.error('加载报告失败:', e);
+                    }
+                };
+                
+                const loadSettings = async () => {
+                    try {
+                        const res = await fetch('/api/settings');
+                        const data = await res.json();
+                        if (data.success) {
+                            settings.value = data.data;
+                        }
+                    } catch (e) {
+                        console.error('加载设置失败:', e);
+                    }
+                };
+                
+                const saveSettings = async () => {
+                    try {
+                        const res = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(settings.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('设置已保存');
+                        } else {
+                            ElMessage.error('保存失败：' + data.error);
+                        }
+                    } catch (e) {
+                        console.error('保存设置失败:', e);
+                        ElMessage.error('保存失败');
                     }
                 };
                 
@@ -861,11 +945,11 @@
                 
                 return {
                     targets, selectedTarget, providers, availableModels, selectedProvider, selectedModel,
-                    analyzing, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig,
+                    analyzing, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig, settings,
                     knowledgeDocs, docContent, docDialogVisible, commandsDialogVisible, quickCommands, renderedReport, renderedDocContent,
                     addTargetDialogVisible, newTarget,
                     selectTarget, showAddTargetDialog, addTarget, onProviderChange, getProviderLabel, startAnalysis,
-                    loadReports, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport
+                    loadReports, loadSettings, saveSettings, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport
                 };
             }
         });
