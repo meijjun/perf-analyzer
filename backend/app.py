@@ -20,7 +20,6 @@ from services.llm_service import LLMService
 from services.ssh_service import SSHService
 from services.telnet_service import TelnetService
 from services.analysis_service import AnalysisService
-from services.monitor_service import get_monitor
 from services.optimizer_service import create_optimizer
 from services.baseline_service import get_baseline_service
 from models.config import ConfigManager
@@ -63,12 +62,10 @@ config_manager = ConfigManager('../config/config.yaml')
 llm_service = LLMService(config_manager)
 ssh_service = SSHService()
 analysis_service = AnalysisService(llm_service, ssh_service)
-monitor_service = get_monitor()
 optimizer_service = create_optimizer()
 baseline_service = get_baseline_service()
 
 # 启动实时监控
-monitor_service.start()
 
 
 # ==================== 页面路由 ====================
@@ -79,15 +76,6 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/dashboard')
-def dashboard():
-    """实时监控仪表板"""
-    return render_template('dashboard.html')
-
-
-# ==================== API 路由 ====================
-
-@app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查"""
     return jsonify({
@@ -413,24 +401,6 @@ def get_quick_commands():
 
 # ==================== 实时监控 API ====================
 
-@app.route('/api/monitor/current', methods=['GET'])
-def get_current_metrics():
-    """获取当前性能指标"""
-    try:
-        metrics = monitor_service.get_current_metrics()
-        return jsonify({
-            'success': True,
-            'data': metrics
-        })
-    except Exception as e:
-        logger.error(f"获取当前指标失败：{e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@app.route('/api/monitor/summary', methods=['GET'])
 def get_monitor_summary():
     """获取监控摘要"""
     try:
@@ -447,25 +417,6 @@ def get_monitor_summary():
         }), 400
 
 
-@app.route('/api/monitor/history', methods=['GET'])
-def get_monitor_history():
-    """获取历史数据"""
-    try:
-        minutes = request.args.get('minutes', 10, type=int)
-        history = monitor_service.get_history(minutes)
-        return jsonify({
-            'success': True,
-            'data': history
-        })
-    except Exception as e:
-        logger.error(f"获取历史数据失败：{e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
-
-
-@app.route('/api/monitor/alerts', methods=['GET'])
 def get_monitor_alerts():
     """获取告警列表"""
     try:
