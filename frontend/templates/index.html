@@ -281,11 +281,50 @@
                             </div>
                         </div>
                         
+                        <!-- 采集模式选择 -->
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-weight: 600; margin-bottom: 12px;">📊 采集模式</div>
+                            <el-radio-group v-model="analysisMode" size="large">
+                                <el-radio-button label="single">
+                                    <el-icon><Clock /></el-icon> 单次分析（快速诊断）
+                                </el-radio-button>
+                                <el-radio-button label="continuous">
+                                    <el-icon><Video-Camera /></el-icon> 持续监控（性能追踪）
+                                </el-radio-button>
+                            </el-radio-group>
+                            
+                            <!-- 持续监控模式提示 -->
+                            <el-alert 
+                                v-if="analysisMode === 'continuous'" 
+                                title="持续监控模式" 
+                                type="info" 
+                                :closable="false"
+                                show-icon
+                                style="margin-top: 12px;">
+                                <div>将采集 <strong>{{ settings.collection.max_collections }}</strong> 次数据，
+                                间隔 <strong>{{ settings.collection.interval_seconds }}</strong> 秒，
+                                预计耗时 <strong>{{ (settings.collection.max_collections * settings.collection.interval_seconds / 60).toFixed(1) }}</strong> 分钟</div>
+                                <div style="margin-top: 8px; font-size: 12px;">
+                                    💡 提示：可在"⚙️ 系统设置"中调整采集参数
+                                </div>
+                            </el-alert>
+                        </div>
+                        
                         <div style="margin-top: 24px;">
                             <el-button type="primary" size="large" @click="startAnalysis" :disabled="!selectedTarget || analyzing" style="width: 100%;">
                                 <el-icon v-if="analyzing" style="margin-right: 8px;"><Loading /></el-icon>
                                 <el-icon v-else style="margin-right: 8px;"><Rocket /></el-icon>
                                 {{ analyzing ? '分析中...' : '开始分析' }}
+                            </el-button>
+                            
+                            <!-- 持续监控模式下显示停止按钮 -->
+                            <el-button 
+                                v-if="analyzing && analysisMode === 'continuous'" 
+                                type="danger" 
+                                size="large" 
+                                @click="stopAnalysis" 
+                                style="width: 100%; margin-top: 12px;">
+                                <el-icon><Video-Pause /></el-icon> 停止监控
                             </el-button>
                         </div>
                         
@@ -555,6 +594,8 @@
                 const selectedProvider = ref('aliyun');
                 const selectedModel = ref('qwen-max');
                 const analyzing = ref(false);
+                const analysisMode = ref('single');  // 'single' or 'continuous'
+                const currentTaskId = ref(null);
                 const taskStatus = ref(null);
                 const taskProgress = ref(0);
                 const currentStep = ref('');
@@ -811,7 +852,7 @@
                     analyzing.value = true;
                     taskStatus.value = null;
                     taskProgress.value = 0;
-                    currentStep.value = '';
+                    currentStep.value = '准备中';
                     reportContent.value = '';
                     
                     try {
@@ -821,14 +862,16 @@
                             body: JSON.stringify({
                                 target_id: selectedTarget.value.id,
                                 provider: selectedProvider.value,
-                                model: selectedModel.value
+                                model: selectedModel.value,
+                                mode: analysisMode.value
                             })
                         });
                         const data = await res.json();
                         
                         if (data.success) {
                             const taskId = data.task_id;
-                            ElMessage.success('分析任务已启动');
+                            currentTaskId.value = taskId;
+                            ElMessage.success(data.message || '分析任务已启动');
                             pollTaskStatus(taskId);
                         } else {
                             ElMessage.error(data.error || '启动失败');
@@ -837,6 +880,25 @@
                     } catch (e) {
                         ElMessage.error('启动失败');
                         analyzing.value = false;
+                    }
+                };
+                
+                const stopAnalysis = async () => {
+                    if (!currentTaskId.value) return;
+                    
+                    try {
+                        const res = await fetch(`/api/tasks/${currentTaskId.value}/stop`, {
+                            method: 'POST'
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            ElMessage.info('正在停止监控...');
+                        } else {
+                            ElMessage.error(data.error || '停止失败');
+                        }
+                    } catch (e) {
+                        ElMessage.error('停止失败');
                     }
                 };
                 
@@ -945,10 +1007,10 @@
                 
                 return {
                     targets, selectedTarget, providers, availableModels, selectedProvider, selectedModel,
-                    analyzing, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig, settings,
+                    analyzing, analysisMode, currentTaskId, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig, settings,
                     knowledgeDocs, docContent, docDialogVisible, commandsDialogVisible, quickCommands, renderedReport, renderedDocContent,
                     addTargetDialogVisible, newTarget,
-                    selectTarget, showAddTargetDialog, addTarget, onProviderChange, getProviderLabel, startAnalysis,
+                    selectTarget, showAddTargetDialog, addTarget, onProviderChange, getProviderLabel, startAnalysis, stopAnalysis,
                     loadReports, loadSettings, saveSettings, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport
                 };
             }

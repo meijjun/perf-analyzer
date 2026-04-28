@@ -213,12 +213,13 @@ def delete_target(target_id):
 
 @app.route('/api/analyze', methods=['POST'])
 def start_analysis():
-    """开始性能分析"""
+    """开始性能分析（支持单次分析和持续监控两种模式）"""
     try:
         data = request.json
         target_id = data.get('target_id')
         provider = data.get('provider', 'aliyun')
         model = data.get('model', 'qwen-max')
+        mode = data.get('mode', 'single')  # 'single' or 'continuous'
         
         if not target_id:
             return jsonify({
@@ -232,22 +233,37 @@ def start_analysis():
             'status': 'pending',
             'progress': 0,
             'current_step': '准备中',
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
+            'mode': mode
         }
         
         # 异步执行分析
         import threading
-        thread = threading.Thread(
-            target=analysis_service.run_analysis,
-            args=(target_id, provider, model, task_id, running_tasks)
-        )
+        
+        if mode == 'continuous':
+            # 持续监控模式
+            settings = settings_service.get_collection_settings()
+            thread = threading.Thread(
+                target=analysis_service.run_continuous_monitoring,
+                args=(target_id, settings, task_id, running_tasks)
+            )
+            message = '持续监控任务已启动'
+        else:
+            # 单次分析模式
+            thread = threading.Thread(
+                target=analysis_service.run_analysis,
+                args=(target_id, provider, model, task_id, running_tasks)
+            )
+            message = '分析任务已启动'
+        
         thread.daemon = True
         thread.start()
         
         return jsonify({
             'success': True,
             'task_id': task_id,
-            'message': '分析任务已启动'
+            'mode': mode,
+            'message': message
         })
     except Exception as e:
         logger.error(f"启动分析失败：{e}")
@@ -259,7 +275,7 @@ def start_analysis():
 
 @app.route('/api/tasks/<task_id>', methods=['GET'])
 def get_task_status(task_id):
-    """获取任务状态"""
+    """获取任务状态（支持持续监控）"""
     if task_id not in running_tasks:
         return jsonify({
             'success': False,
@@ -267,9 +283,39 @@ def get_task_status(task_id):
         }), 404
     
     task = running_tasks[task_id]
+    
+    # 如果是持续监控模式，附加最新指标
+    if task.get('mode') == 'continuous' and task.get('status') == 'running':
+        import os
+        task_dir = f"../reports/{task_id}"
+        latest_path = f"{task_dir}/latest.json"
+        
+        if os.path.exists(latest_path):
+            with open(latest_path, 'r', encoding='utf-8') as f:
+                latest_metrics = json.load(f)
+            task['latest_metrics'] = latest_metrics
+    
     return jsonify({
         'success': True,
         'data': task
+    })
+
+
+@app.route('/api/tasks/<task_id>/stop', methods=['POST'])
+def stop_task(task_id):
+    """停止任务（用于中断持续监控）"""
+    if task_id not in running_tasks:
+        return jsonify({
+            'success': False,
+            'error': '任务不存在'
+        }), 404
+    
+    running_tasks[task_id]['status'] = 'stopped'
+    logger.info(f"[任务 {task_id}] 用户请求停止")
+    
+    return jsonify({
+        'success': True,
+        'message': '任务已停止'
     })
 
 

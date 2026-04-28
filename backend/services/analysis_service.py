@@ -2,12 +2,15 @@
 """
 分析服务 - 协调 SSH/Telnet 采集和大模型分析
 集成 linux-performance-analyzer Skill 知识库
+支持单次分析和持续监控两种模式
 """
 
 import json
 import logging
 import os
 import re
+import time
+import csv
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -395,3 +398,278 @@ class AnalysisService:
     def get_quick_commands(self, scenario: str) -> list:
         """获取快速诊断命令（供 API 调用）"""
         return self.knowledge_base.get_quick_commands(scenario)
+    
+    # ========== 持续监控模式 ==========
+    
+    def run_continuous_monitoring(self, target_id: str, settings: Dict, 
+                                  task_id: str, running_tasks: Dict) -> None:
+        """持续监控模式"""
+        try:
+            logger.info(f"[任务 {task_id}] 开始持续监控")
+            
+            # 1. 加载目标配置
+            from models.config import ConfigManager
+            config_manager = ConfigManager('../config/config.yaml')
+            targets = config_manager.get_targets()
+            target = next((t for t in targets if t.get('id') == target_id), None)
+            
+            if not target:
+                self._update_task(running_tasks, task_id, {
+                    'status': 'failed',
+                    'error': '目标设备不存在'
+                })
+                return
+            
+            # 2. 解析设置
+            duration_minutes = settings['duration_minutes']
+            max_collections = settings['max_collections']
+            interval_seconds = settings['interval_seconds']
+            
+            # 根据时长计算最大采集次数
+            if duration_minutes > 0:
+                calculated = (duration_minutes * 60) // interval_seconds
+                max_collections = min(max_collections, calculated)
+            
+            logger.info(f"[任务 {task_id}] 监控参数 - 次数:{max_collections}, "
+                       f"间隔:{interval_seconds}s, 预计:{max_collections*interval_seconds/60:.1f}分钟")
+            
+            # 3. 建立连接
+            self._update_task(running_tasks, task_id, {
+                'progress': 10,
+                'current_step': f"连接 {target.get('host')}..."
+            })
+            
+            protocol = target.get('protocol', 'ssh')
+            if protocol == 'telnet':
+                telnet_service = TelnetService()
+                if not telnet_service.connect(target):
+                    self._update_task(running_tasks, task_id, {
+                        'status': 'failed',
+                        'error': 'Telnet 连接失败'
+                    })
+                    return
+                connection = telnet_service
+            else:
+                if not self.ssh_service.connect(target):
+                    self._update_task(running_tasks, task_id, {
+                        'status': 'failed',
+                        'error': 'SSH 连接失败'
+                    })
+                    return
+                connection = self.ssh_service
+            
+            # 4. 循环采集
+            all_metrics = []
+            start_time = datetime.now()
+            
+            for i in range(max_collections):
+                # 检查是否应该停止
+                if self._should_stop(running_tasks, task_id):
+                    logger.info(f"[任务 {task_id}] 监控被用户中断")
+                    break
+                
+                # 更新进度
+                progress = 10 + int((i / max_collections) * 80)
+                self._update_task(running_tasks, task_id, {
+                    'progress': progress,
+                    'current_step': f'第 {i+1}/{max_collections} 次采集'
+                })
+                
+                # 采集数据
+                perf_data = connection.collect_performance_data()
+                metrics = self._extract_metrics(perf_data)
+                metrics['timestamp'] = datetime.now().isoformat()
+                metrics['collection_index'] = i + 1
+                all_metrics.append(metrics)
+                
+                # 保存中间数据
+                self._save_continuous_data(task_id, i, metrics)
+                
+                logger.info(f"[任务 {task_id}] 第 {i+1} 次采集完成 - "
+                           f"CPU:{metrics.get('cpu_usage')}% "
+                           f"内存:{metrics.get('memory_usage')}%")
+                
+                # 等待（最后一次不等待）
+                if i < max_collections - 1:
+                    time.sleep(interval_seconds)
+            
+            # 5. 断开连接
+            if protocol == 'telnet':
+                telnet_service.disconnect()
+            else:
+                self.ssh_service.disconnect()
+            
+            # 6. 生成趋势报告
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            self._update_task(running_tasks, task_id, {
+                'progress': 90,
+                'current_step': '生成趋势报告...'
+            })
+            
+            report_path = self._generate_trend_report(task_id, all_metrics, duration, target)
+            
+            # 7. 完成任务
+            self._update_task(running_tasks, task_id, {
+                'status': 'completed',
+                'progress': 100,
+                'current_step': '完成',
+                'result': {
+                    'collections': len(all_metrics),
+                    'duration_seconds': duration,
+                    'report_path': report_path
+                }
+            })
+            
+            logger.info(f"[任务 {task_id}] 持续监控完成 - 采集{len(all_metrics)}次，耗时{duration:.1f}秒")
+            
+        except Exception as e:
+            logger.error(f"[任务 {task_id}] 持续监控失败：{e}")
+            import traceback
+            traceback.print_exc()
+            self._update_task(running_tasks, task_id, {
+                'status': 'failed',
+                'error': str(e)
+            })
+    
+    def _should_stop(self, running_tasks: Dict, task_id: str) -> bool:
+        """检查是否应该停止监控"""
+        task = running_tasks.get(task_id, {})
+        return task.get('status') == 'stopped'
+    
+    def _save_continuous_data(self, task_id: str, index: int, metrics: Dict):
+        """保存持续监控数据"""
+        import os
+        
+        # 创建任务目录
+        task_dir = f"../reports/{task_id}"
+        os.makedirs(task_dir, exist_ok=True)
+        
+        # 保存为 JSON Lines 格式
+        jsonl_path = f"{task_dir}/metrics.jsonl"
+        with open(jsonl_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(metrics, ensure_ascii=False) + '\n')
+        
+        # 同时保存最新数据到单独文件（用于实时查看）
+        latest_path = f"{task_dir}/latest.json"
+        with open(latest_path, 'w', encoding='utf-8') as f:
+            json.dump(metrics, f, indent=2, ensure_ascii=False)
+    
+    def _generate_trend_report(self, task_id: str, all_metrics: list, 
+                               duration_seconds: float, target: Dict) -> str:
+        """生成趋势分析报告"""
+        import os
+        
+        report_path = f"../reports/{task_id}/trend_report.md"
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        
+        # 计算统计信息
+        if not all_metrics:
+            return None
+        
+        cpu_values = [m.get('cpu_usage', 0) for m in all_metrics if m.get('cpu_usage')]
+        mem_values = [m.get('memory_usage', 0) for m in all_metrics if m.get('memory_usage')]
+        disk_values = [m.get('disk_usage', 0) for m in all_metrics if m.get('disk_usage')]
+        load_values = [m.get('load_1min', 0) for m in all_metrics if m.get('load_1min')]
+        
+        def safe_avg(values):
+            return sum(values)/len(values) if values else 0
+        
+        def safe_max(values):
+            return max(values) if values else 0
+        
+        def safe_min(values):
+            return min(values) if values else 0
+        
+        report = f"""# 性能监控趋势报告
+
+**任务 ID**: {task_id}  
+**监控时长**: {duration_seconds:.1f} 秒  
+**采集次数**: {len(all_metrics)} 次  
+**采集间隔**: {duration_seconds/len(all_metrics):.1f} 秒  
+**目标设备**: {target.get('host')}:{target.get('port')}  
+**时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## 统计摘要
+
+### CPU 使用率
+- 平均值：{safe_avg(cpu_values):.1f}%
+- 最大值：{safe_max(cpu_values):.1f}%
+- 最小值：{safe_min(cpu_values):.1f}%
+
+### 内存使用率
+- 平均值：{safe_avg(mem_values):.1f}%
+- 最大值：{safe_max(mem_values):.1f}%
+- 最小值：{safe_min(mem_values):.1f}%
+
+### 磁盘使用率
+- 平均值：{safe_avg(disk_values):.1f}%
+- 最大值：{safe_max(disk_values):.1f}%
+- 最小值：{safe_min(disk_values):.1f}%
+
+### 系统负载
+- 平均值：{safe_avg(load_values):.2f}
+- 最大值：{safe_max(load_values):.2f}
+- 最小值：{safe_min(load_values):.2f}
+
+## 趋势分析
+
+"""
+        # 简单趋势分析
+        if cpu_values and len(cpu_values) >= 3:
+            first_third = cpu_values[:len(cpu_values)//3]
+            last_third = cpu_values[-(len(cpu_values)//3):]
+            avg_first = safe_avg(first_third)
+            avg_last = safe_avg(last_third)
+            
+            if avg_last > avg_first * 1.2:
+                report += "**CPU 使用率**: 呈上升趋势 ⚠️\n\n"
+            elif avg_last < avg_first * 0.8:
+                report += "**CPU 使用率**: 呈下降趋势 ✅\n\n"
+            else:
+                report += "**CPU 使用率**: 保持稳定 ➡️\n\n"
+        
+        # 数据文件说明
+        report += f"""
+## 原始数据
+
+数据文件：
+- `metrics.jsonl` - 所有采集数据（JSON Lines 格式）
+- `latest.json` - 最后一次采集数据
+- `chart_data.csv` - 图表数据（可导入 Excel）
+
+## 建议
+
+"""
+        # 根据平均值给出建议
+        if safe_avg(cpu_values) > 80:
+            report += "- ⚠️ **CPU 使用率偏高**，建议检查高负载进程\n"
+        if safe_avg(mem_values) > 85:
+            report += "- ⚠️ **内存使用率偏高**，建议检查内存泄漏或增加内存\n"
+        if safe_avg(disk_values) > 80:
+            report += "- ⚠️ **磁盘使用率偏高**，建议清理无用文件或扩容\n"
+        if safe_avg(cpu_values) <= 80 and safe_avg(mem_values) <= 85 and safe_avg(disk_values) <= 80:
+            report += "- ✅ 系统整体运行正常\n"
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(report)
+        
+        # 同时生成 CSV 格式（方便导入 Excel）
+        csv_path = f"../reports/{task_id}/chart_data.csv"
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['时间戳', '采集次序', 'CPU 使用率', '内存使用率', '磁盘使用率', '系统负载'])
+            
+            for m in all_metrics:
+                writer.writerow([
+                    m.get('timestamp', ''),
+                    m.get('collection_index', 0),
+                    m.get('cpu_usage', 0),
+                    m.get('memory_usage', 0),
+                    m.get('disk_usage', 0),
+                    m.get('load_1min', 0)
+                ])
+        
+        logger.info(f"[任务 {task_id}] 趋势报告已生成：{report_path}")
+        return report_path
