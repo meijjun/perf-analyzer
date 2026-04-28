@@ -7,6 +7,7 @@ import telnetlib
 import time
 import logging
 from typing import Dict, Any
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
