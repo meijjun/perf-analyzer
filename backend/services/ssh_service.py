@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 SSH 服务 - 远程连接和数据采集
+支持命令执行日志记录
 """
 
 import paramiko
@@ -8,6 +9,7 @@ import time
 import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,8 @@ class SSHService:
         self.client = None
         self.connected = False
         self.host = None
+        self.command_logger = None
+        self.target_info = {}
     
     def connect(self, config: Dict[str, Any]) -> bool:
         """建立 SSH 连接（增强兼容性）"""
@@ -139,7 +143,7 @@ class SSHService:
             }
     
     def collect_performance_data(self) -> Dict[str, Any]:
-        """收集性能数据"""
+        """收集性能数据（带命令日志）"""
         if not self.connected:
             return {
                 "success": False,
@@ -147,6 +151,10 @@ class SSHService:
             }
         
         logger.info("[采集] 开始收集性能数据...")
+        
+        # 记录采集开始
+        if self.command_logger:
+            self.command_logger.log_collection_start(1)
         
         collected_data = {
             "success": True,
@@ -164,7 +172,21 @@ class SSHService:
             }
             
             for cmd in commands:
+                # 记录命令执行（带时间戳）
+                if self.command_logger:
+                    self.command_logger.log_command(
+                        command=cmd,
+                        target_host=self.host,
+                        target_port=self.target_info.get('port', 22),
+                        category=category
+                    )
+                
+                # 执行命令并计时
+                start_time = datetime.now()
                 result = self.execute(cmd)
+                end_time = datetime.now()
+                duration_ms = int((end_time - start_time).total_seconds() * 1000)
+                
                 cmd_name = cmd.split()[0] if cmd.split() else "unknown"
                 
                 category_data["commands"].append({
@@ -173,11 +195,29 @@ class SSHService:
                 })
                 category_data["raw_output"][cmd_name] = result
                 
+                # 记录命令执行结果
+                if self.command_logger:
+                    self.command_logger.log_command_result(
+                        command=cmd,
+                        stdout=result.get('stdout', ''),
+                        stderr=result.get('stderr', ''),
+                        exit_code=result.get('exit_code'),
+                        duration_ms=duration_ms
+                    )
+                
                 # 提取主机名
                 if category == "system_info" and "hostname" in cmd:
                     collected_data["hostname"] = result["stdout"].strip()
             
             collected_data["categories"][category] = category_data
+        
+        # 记录采集完成
+        if self.command_logger:
+            metrics_summary = {
+                'hostname': collected_data['hostname'],
+                'categories': len(collected_data['categories'])
+            }
+            self.command_logger.log_collection_complete(1, metrics_summary)
         
         logger.info(f"[采集] 数据收集完成，主机名：{collected_data['hostname']}")
         return collected_data
@@ -188,6 +228,16 @@ class SSHService:
             self.client.close()
             self.connected = False
             logger.info(f"[SSH] 已断开连接 {self.host}")
+            
+            # 记录断开连接
+            if self.command_logger:
+                self.command_logger.log_connection(
+                    'disconnect', 
+                    self.host, 
+                    self.target_info.get('port', 22),
+                    'ssh',
+                    success=True
+                )
     
     def test_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """测试连接"""

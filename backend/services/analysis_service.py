@@ -64,9 +64,13 @@ class AnalysisService:
             # 2. 建立连接（SSH 或 Telnet）
             protocol = target.get('protocol', 'ssh')
             
+            # 准备连接配置（添加 task_id 用于日志记录）
+            connect_config = target.copy()
+            connect_config['task_id'] = task_id
+            
             if protocol == 'telnet':
                 telnet_service = TelnetService()
-                if not telnet_service.connect(target):
+                if not telnet_service.connect(connect_config):
                     self._update_task(running_tasks, task_id, {
                         'status': 'failed',
                         'progress': 0,
@@ -80,11 +84,11 @@ class AnalysisService:
                     'current_step': '收集性能数据 (Telnet)...'
                 })
                 
-                # 3. 收集性能数据
+                # 3. 收集性能数据（带命令日志）
                 perf_data = telnet_service.collect_performance_data()
                 telnet_service.disconnect()
             else:
-                if not self.ssh_service.connect(target):
+                if not self.ssh_service.connect(connect_config):
                     self._update_task(running_tasks, task_id, {
                         'status': 'failed',
                         'progress': 0,
@@ -98,7 +102,7 @@ class AnalysisService:
                     'current_step': '收集性能数据...'
                 })
                 
-                # 3. 收集性能数据
+                # 3. 收集性能数据（带命令日志）
                 perf_data = self.ssh_service.collect_performance_data()
                 self.ssh_service.disconnect()
                 
@@ -440,9 +444,14 @@ class AnalysisService:
             })
             
             protocol = target.get('protocol', 'ssh')
+            
+            # 准备连接配置（添加 task_id 用于日志记录）
+            connect_config = target.copy()
+            connect_config['task_id'] = task_id
+            
             if protocol == 'telnet':
                 telnet_service = TelnetService()
-                if not telnet_service.connect(target):
+                if not telnet_service.connect(connect_config):
                     self._update_task(running_tasks, task_id, {
                         'status': 'failed',
                         'error': 'Telnet 连接失败'
@@ -450,7 +459,7 @@ class AnalysisService:
                     return
                 connection = telnet_service
             else:
-                if not self.ssh_service.connect(target):
+                if not self.ssh_service.connect(connect_config):
                     self._update_task(running_tasks, task_id, {
                         'status': 'failed',
                         'error': 'SSH 连接失败'
@@ -475,7 +484,10 @@ class AnalysisService:
                     'current_step': f'第 {i+1}/{max_collections} 次采集'
                 })
                 
-                # 采集数据
+                # 记录采集开始
+                logger.info(f"[任务 {task_id}] 开始第 {i+1}/{max_collections} 次采集")
+                
+                # 采集数据（会记录所有命令到日志）
                 perf_data = connection.collect_performance_data()
                 metrics = self._extract_metrics(perf_data)
                 metrics['timestamp'] = datetime.now().isoformat()
