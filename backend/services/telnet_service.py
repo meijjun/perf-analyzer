@@ -28,15 +28,26 @@ class TelnetService:
         self.client = None
         self.connected = False
         self.host = None
+        self.command_logger = None
+        self.target_info = {}
     
     def connect(self, config: Dict[str, Any]) -> bool:
-        """建立 Telnet 连接"""
+        """建立 Telnet 连接（带日志）"""
         try:
+            self.target_info = config
             host = config.get("host")
+            self.host = host
             port = config.get("port", 23)
             username = config.get("username")
             password = config.get("password", "")
             timeout = config.get("timeout", 30)
+            
+            # 初始化命令日志
+            task_id = config.get('task_id')
+            if task_id:
+                from services.command_logger import get_command_logger
+                self.command_logger = get_command_logger(task_id)
+                self.command_logger.log_connection('connect', host, port, 'telnet')
             
             self.client = telnetlib.Telnet(host, port, timeout)
             
@@ -110,11 +121,15 @@ class TelnetService:
             }
     
     def collect_performance_data(self) -> Dict[str, Any]:
-        """收集性能数据"""
+        """收集性能数据（带命令日志）"""
         if not self.connected:
             return {"success": False, "error": "未连接"}
         
         logger.info("[Telnet 采集] 开始收集性能数据...")
+        
+        # 记录采集开始
+        if self.command_logger:
+            self.command_logger.log_collection_start(1)
         
         collected_data = {"success": True, "hostname": None, "categories": {}}
         
@@ -123,22 +138,64 @@ class TelnetService:
             category_data = {"commands": [], "raw_output": {}}
             
             for cmd in commands:
+                # 记录命令执行（带时间戳）
+                if self.command_logger:
+                    self.command_logger.log_command(
+                        command=cmd,
+                        target_host=self.host,
+                        target_port=self.target_info.get('port', 23),
+                        category=category
+                    )
+                
+                # 执行命令并计时
+                start_time = datetime.now()
                 result = self.execute(cmd)
+                end_time = datetime.now()
+                duration_ms = int((end_time - start_time).total_seconds() * 1000)
+                
                 cmd_name = cmd.split()[0] if cmd.split() else "unknown"
                 category_data["commands"].append({"command": cmd, "success": result["success"]})
                 category_data["raw_output"][cmd_name] = result
+                
+                # 记录命令执行结果
+                if self.command_logger:
+                    self.command_logger.log_command_result(
+                        command=cmd,
+                        stdout=result.get('stdout', ''),
+                        stderr=result.get('stderr', ''),
+                        exit_code=result.get('exit_code'),
+                        duration_ms=duration_ms
+                    )
                 
                 if category == "system_info" and "hostname" in cmd:
                     collected_data["hostname"] = result["stdout"].strip()
             
             collected_data["categories"][category] = category_data
         
+        # 记录采集完成
+        if self.command_logger:
+            metrics_summary = {
+                'hostname': collected_data['hostname'],
+                'categories': len(collected_data['categories'])
+            }
+            self.command_logger.log_collection_complete(1, metrics_summary)
+        
         logger.info(f"[Telnet 采集] 数据收集完成，主机名：{collected_data['hostname']}")
         return collected_data
     
     def disconnect(self):
-        """断开连接"""
+        """断开连接（带日志）"""
         if self.client:
             self.client.close()
             self.connected = False
             logger.info(f"[Telnet] 已断开连接 {self.host}")
+            
+            # 记录断开连接
+            if self.command_logger:
+                self.command_logger.log_connection(
+                    'disconnect',
+                    self.host,
+                    self.target_info.get('port', 23),
+                    'telnet',
+                    success=True
+                )
