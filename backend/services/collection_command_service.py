@@ -18,40 +18,40 @@ class CollectionCommandService:
     # 默认系统命令（不可删除）
     DEFAULT_COMMANDS = {
         "system_info": [
-            {"command": "hostname", "description": "获取主机名"},
-            {"command": "uname -r", "description": "查看内核版本"},
-            {"command": "cat /etc/os-release | grep PRETTY_NAME", "description": "查看操作系统版本"},
-            {"command": "uptime -p", "description": "查看运行时间"},
-            {"command": "date", "description": "查看当前时间"}
+            {"command": "hostname", "description": "获取主机名", "is_custom": False},
+            {"command": "uname -r", "description": "查看内核版本", "is_custom": False},
+            {"command": "cat /etc/os-release | grep PRETTY_NAME", "description": "查看操作系统版本", "is_custom": False},
+            {"command": "uptime -p", "description": "查看运行时间", "is_custom": False},
+            {"command": "date", "description": "查看当前时间", "is_custom": False}
         ],
         "cpu_info": [
-            {"command": "cat /proc/cpuinfo | grep 'model name' | head -1", "description": "查看 CPU 型号"},
-            {"command": "nproc", "description": "查看 CPU 核心数"},
-            {"command": "top -bn1 | grep 'Cpu(s)' | head -1", "description": "查看 CPU 使用率"},
-            {"command": "cat /proc/loadavg", "description": "查看系统负载"},
-            {"command": "ps aux --sort=-%cpu | head -11", "description": "查看 CPU 占用最高的进程"}
+            {"command": "cat /proc/cpuinfo | grep 'model name' | head -1", "description": "查看 CPU 型号", "is_custom": False},
+            {"command": "nproc", "description": "查看 CPU 核心数", "is_custom": False},
+            {"command": "top -bn1 | grep 'Cpu(s)' | head -1", "description": "查看 CPU 使用率", "is_custom": False},
+            {"command": "cat /proc/loadavg", "description": "查看系统负载", "is_custom": False},
+            {"command": "ps aux --sort=-%cpu | head -11", "description": "查看 CPU 占用最高的进程", "is_custom": False}
         ],
         "memory_info": [
-            {"command": "free -h", "description": "查看内存使用情况"},
-            {"command": "cat /proc/meminfo | head -20", "description": "查看详细内存信息"},
-            {"command": "cat /proc/swaps", "description": "查看交换分区"},
-            {"command": "ps aux --sort=-%mem | head -11", "description": "查看内存占用最高的进程"}
+            {"command": "free -h", "description": "查看内存使用情况", "is_custom": False},
+            {"command": "cat /proc/meminfo | head -20", "description": "查看详细内存信息", "is_custom": False},
+            {"command": "cat /proc/swaps", "description": "查看交换分区", "is_custom": False},
+            {"command": "ps aux --sort=-%mem | head -11", "description": "查看内存占用最高的进程", "is_custom": False}
         ],
         "disk_io_info": [
-            {"command": "df -h", "description": "查看磁盘使用情况"},
-            {"command": "iostat -x 1 1 2>/dev/null || echo 'iostat not available'", "description": "查看磁盘 IO 统计"},
-            {"command": "mount | grep -E '^/dev'", "description": "查看挂载点"}
+            {"command": "df -h", "description": "查看磁盘使用情况", "is_custom": False},
+            {"command": "iostat -x 1 1 2>/dev/null || echo 'iostat not available'", "description": "查看磁盘 IO 统计", "is_custom": False},
+            {"command": "mount | grep -E '^/dev'", "description": "查看挂载点", "is_custom": False}
         ],
         "network_info": [
-            {"command": "ip addr show 2>/dev/null || ifconfig", "description": "查看网络接口"},
-            {"command": "ss -s", "description": "查看网络统计"},
-            {"command": "ss -antp | head -20", "description": "查看网络连接"},
-            {"command": "cat /proc/net/dev | grep -v 'Inter\\|face'", "description": "查看网络流量"}
+            {"command": "ip addr show 2>/dev/null || ifconfig", "description": "查看网络接口", "is_custom": False},
+            {"command": "ss -s", "description": "查看网络统计", "is_custom": False},
+            {"command": "ss -antp | head -20", "description": "查看网络连接", "is_custom": False},
+            {"command": "cat /proc/net/dev | grep -v 'Inter\\|face'", "description": "查看网络流量", "is_custom": False}
         ],
         "process_info": [
-            {"command": "ps aux | wc -l", "description": "查看进程总数"},
-            {"command": "ps aux | grep -w defunct || echo 'No zombie processes'", "description": "查看僵尸进程"},
-            {"command": "ps aux --sort=-%cpu | head -6", "description": "查看进程 CPU 占用"}
+            {"command": "ps aux | wc -l", "description": "查看进程总数", "is_custom": False},
+            {"command": "ps aux | grep -w defunct || echo 'No zombie processes'", "description": "查看僵尸进程", "is_custom": False},
+            {"command": "ps aux --sort=-%cpu | head -6", "description": "查看进程 CPU 占用", "is_custom": False}
         ]
     }
     
