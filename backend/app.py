@@ -23,6 +23,7 @@ from services.analysis_service import AnalysisService
 from services.optimizer_service import create_optimizer
 from services.baseline_service import get_baseline_service
 from services.settings_service import get_settings_service
+from services.collection_command_service import get_collection_command_service
 from models.config import ConfigManager
 
 # 配置日志
@@ -61,6 +62,7 @@ running_tasks = {}
 # 初始化服务
 config_manager = ConfigManager('../config/config.yaml')
 settings_service = get_settings_service()
+command_service = get_collection_command_service()
 llm_service = LLMService(config_manager)
 ssh_service = SSHService()
 analysis_service = AnalysisService(llm_service, ssh_service)
@@ -680,6 +682,181 @@ def internal_error(error):
     }), 500
 
 
+# ==================== 采集命令管理 API ====================
+
+@app.route('/api/collection-commands', methods=['GET'])
+def get_collection_commands():
+    """获取所有采集命令"""
+    try:
+        commands = command_service.get_all_commands()
+        return jsonify({
+            'success': True,
+            'data': commands
+        })
+    except Exception as e:
+        logger.error(f"获取采集命令失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/collection-commands/categories', methods=['GET'])
+def get_categories():
+    """获取所有分类"""
+    try:
+        categories = command_service.get_categories()
+        return jsonify({
+            'success': True,
+            'data': categories
+        })
+    except Exception as e:
+        logger.error(f"获取分类失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/collection-commands', methods=['POST'])
+def add_command():
+    """添加采集命令"""
+    try:
+        data = request.json
+        category = data.get('category')
+        command = data.get('command')
+        description = data.get('description', '')
+        is_custom = data.get('is_custom', True)
+        
+        if not all([category, command]):
+            return jsonify({
+                'success': False,
+                'error': '缺少必填字段：category, command'
+            }), 400
+        
+        success = command_service.add_command(category, command, description, is_custom)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '命令已添加'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '命令已存在'
+            }), 400
+    except Exception as e:
+        logger.error(f"添加命令失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/collection-commands/update', methods=['POST'])
+def update_command():
+    """更新采集命令"""
+    try:
+        data = request.json
+        category = data.get('category')
+        old_command = data.get('old_command')
+        new_command = data.get('new_command')
+        new_description = data.get('new_description', '')
+        
+        if not all([category, old_command, new_command]):
+            return jsonify({
+                'success': False,
+                'error': '缺少必填字段'
+            }), 400
+        
+        success = command_service.update_command(category, old_command, new_command, new_description)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '命令已更新'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '更新失败（系统命令不可修改）'
+            }), 400
+    except Exception as e:
+        logger.error(f"更新命令失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/collection-commands/delete', methods=['POST'])
+def delete_command():
+    """删除采集命令"""
+    try:
+        data = request.json
+        category = data.get('category')
+        command = data.get('command')
+        
+        if not all([category, command]):
+            return jsonify({
+                'success': False,
+                'error': '缺少必填字段'
+            }), 400
+        
+        success = command_service.delete_command(category, command)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '命令已删除'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '删除失败（系统命令不可删除）'
+            }), 400
+    except Exception as e:
+        logger.error(f"删除命令失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/collection-commands/categories', methods=['POST'])
+def add_category():
+    """添加分类"""
+    try:
+        data = request.json
+        category = data.get('category')
+        
+        if not category:
+            return jsonify({
+                'success': False,
+                'error': '缺少必填字段：category'
+            }), 400
+        
+        success = command_service.add_category(category)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '分类已添加'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '分类已存在'
+            }), 400
+    except Exception as e:
+        logger.error(f"添加分类失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
 # ==================== 设置 API ====================
 
 @app.route('/api/settings', methods=['GET'])
@@ -715,6 +892,12 @@ def update_settings():
             'success': False,
             'error': str(e)
         }), 400
+
+
+@app.route('/commands-manage')
+def commands_manage():
+    """采集命令管理页面"""
+    return render_template('commands-manage.html')
 
 
 # ==================== 主程序 ====================

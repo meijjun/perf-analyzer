@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>采集命令管理 - 性能分析器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="./static/css/global-nav.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding-top: 60px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .section-title {
+            font-size: 18px; font-weight: 600; color: #333;
+            margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #667eea;
+        }
+        .category-card {
+            background: white; border-radius: 8px; padding: 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .category-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #e0e0e0;
+        }
+        .category-name {
+            font-size: 16px; font-weight: 600; color: #667eea;
+            display: flex; align-items: center;
+        }
+        .category-name i { margin-right: 8px; }
+        .command-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px; margin-bottom: 8px; background: #f9f9f9;
+            border-radius: 6px; transition: all 0.3s;
+        }
+        .command-item:hover { background: #f0f0ff; }
+        .command-info { flex: 1; }
+        .command-text {
+            font-family: 'Courier New', monospace; color: #333;
+            font-size: 14px; margin-bottom: 4px;
+        }
+        .command-desc { font-size: 12px; color: #999; }
+        .command-actions { display: flex; gap: 8px; }
+        .custom-badge {
+            display: inline-block; padding: 2px 8px;
+            background: #e3f2fd; color: #1976d2;
+            border-radius: 12px; font-size: 11px; margin-left: 8px;
+        }
+        .system-badge {
+            display: inline-block; padding: 2px 8px;
+            background: #f5f5f5; color: #757575;
+            border-radius: 12px; font-size: 11px; margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 全局导航栏 -->
+        <nav class="global-nav">
+            <div class="nav-container">
+                <a href="/" class="nav-brand"><i class="fas fa-chart-line"></i>性能分析器</a>
+                <div class="nav-links">
+                    <a href="/" class="nav-link"><i class="fas fa-home"></i>首页</a>
+                    <a href="/dashboard" class="nav-link"><i class="fas fa-tachometer-alt"></i>实时监控</a>
+                    <a href="/collection" class="nav-link active"><i class="fas fa-database"></i>采集管理</a>
+                    <a href="/visualization" class="nav-link"><i class="fas fa-chart-area"></i>数据可视化</a>
+                    <a href="/models" class="nav-link"><i class="fas fa-brain"></i>模型管理</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- 页面标题 -->
+            <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fas fa-terminal"></i> 采集命令管理</span>
+                <div style="display: flex; gap: 12px;">
+                    <el-button type="primary" @click="showAddCategoryDialog = true">
+                        <i class="fas fa-folder-plus"></i> 添加分类
+                    </el-button>
+                    <el-button type="success" @click="showAddCommandDialog = true">
+                        <i class="fas fa-plus"></i> 添加命令
+                    </el-button>
+                </div>
+            </div>
+
+            <!-- 分类和命令列表 -->
+            <div v-for="(commands, category) in allCommands" :key="category" class="category-card">
+                <div class="category-header">
+                    <div class="category-name">
+                        <i class="fas fa-folder"></i>
+                        {{ category }}
+                        <span class="system-badge" v-if="isSystemCategory(category)">系统分类</span>
+                    </div>
+                    <div>
+                        <el-button size="small" @click="showAddCommand(category)" type="success" plain>
+                            <i class="fas fa-plus"></i> 添加命令
+                        </el-button>
+                        <el-button 
+                            v-if="!isSystemCategory(category)" 
+                            size="small" 
+                            @click="deleteCategory(category)" 
+                            type="danger" 
+                            plain>
+                            <i class="fas fa-trash"></i> 删除分类
+                        </el-button>
+                    </div>
+                </div>
+
+                <div class="command-list">
+                    <div v-for="(cmd, index) in commands" :key="index" class="command-item">
+                        <div class="command-info">
+                            <div class="command-text">
+                                <i class="fas fa-code"></i> {{ cmd.command }}
+                                <span v-if="cmd.is_custom" class="custom-badge">自定义</span>
+                                <span v-else class="system-badge">系统</span>
+                            </div>
+                            <div class="command-desc" v-if="cmd.description">
+                                <i class="fas fa-info-circle"></i> {{ cmd.description }}
+                            </div>
+                        </div>
+                        <div class="command-actions">
+                            <el-button 
+                                size="small" 
+                                @click="testCommand(cmd.command)" 
+                                type="info" 
+                                plain>
+                                <i class="fas fa-play"></i> 测试
+                            </el-button>
+                            <el-button 
+                                v-if="cmd.is_custom" 
+                                size="small" 
+                                @click="editCommand(category, cmd)" 
+                                type="primary" 
+                                plain>
+                                <i class="fas fa-edit"></i> 编辑
+                            </el-button>
+                            <el-button 
+                                v-if="cmd.is_custom" 
+                                size="small" 
+                                @click="deleteCommand(category, cmd.command)" 
+                                type="danger" 
+                                plain>
+                                <i class="fas fa-trash"></i> 删除
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加命令对话框 -->
+        <el-dialog v-model="showAddCommandDialog" title="添加采集命令" width="600px">
+            <el-form :model="newCommand" label-width="80px">
+                <el-form-item label="分类" required>
+                    <el-select v-model="newCommand.category" placeholder="选择或输入分类" style="width: 100%;" allow-create filterable>
+                        <el-option v-for="cat in categories" :key="cat" :label="cat" :value="cat" />
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="命令" required>
+                    <el-input v-model="newCommand.command" placeholder="如：top -bn1 | head -20" />
+                </el-form-item>
+                <el-form-item label="描述">
+                    <el-input v-model="newCommand.description" placeholder="命令用途说明" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showAddCommandDialog = false">取消</el-button>
+                <el-button type="primary" @click="addCommand">添加</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 编辑命令对话框 -->
+        <el-dialog v-model="showEditCommandDialog" title="编辑采集命令" width="600px">
+            <el-form :model="editingCommand" label-width="80px">
+                <el-form-item label="命令" required>
+                    <el-input v-model="editingCommand.new_command" placeholder="命令内容" />
+                </el-form-item>
+                <el-form-item label="描述">
+                    <el-input v-model="editingCommand.new_description" placeholder="命令用途说明" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showEditCommandDialog = false">取消</el-button>
+                <el-button type="primary" @click="updateCommand">保存</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 添加分类对话框 -->
+        <el-dialog v-model="showAddCategoryDialog" title="添加分类" width="400px">
+            <el-form :model="newCategory" label-width="60px">
+                <el-form-item label="名称" required>
+                    <el-input v-model="newCategory.category" placeholder="如：security_info" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showAddCategoryDialog = false">取消</el-button>
+                <el-button type="primary" @click="addCategory">添加</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 命令测试对话框 -->
+        <el-dialog v-model="showTestDialog" title="测试命令" width="700px">
+            <div style="margin-bottom: 16px;">
+                <strong>命令：</strong>
+                <code style="background: #f5f5f5; padding: 8px; border-radius: 4px; display: block; margin-top: 8px;">{{ testCommandText }}</code>
+            </div>
+            <div v-if="testResult">
+                <strong>执行结果：</strong>
+                <pre style="background: #f9f9f9; padding: 12px; border-radius: 4px; max-height: 400px; overflow: auto; margin-top: 8px;">{{ testResult }}</pre>
+            </div>
+            <div v-else style="text-align: center; padding: 40px; color: #999;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
+                <p style="margin-top: 12px;">执行中...</p>
+            </div>
+            <template #footer>
+                <el-button @click="showTestDialog = false">关闭</el-button>
+            </template>
+        </el-dialog>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.full.min.js"></script>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const allCommands = ref({});
+                const categories = ref([]);
+                const showAddCommandDialog = ref(false);
+                const showEditCommandDialog = ref(false);
+                const showAddCategoryDialog = ref(false);
+                const showTestDialog = ref(false);
+                
+                const newCommand = ref({ category: '', command: '', description: '' });
+                const newCategory = ref({ category: '' });
+                const editingCommand = ref({ category: '', old_command: '', new_command: '', new_description: '' });
+                const testCommandText = ref('');
+                const testResult = ref('');
+
+                const isSystemCategory = (category) => {
+                    const systemCategories = ['system_info', 'cpu_info', 'memory_info', 'disk_io_info', 'network_info', 'process_info'];
+                    return systemCategories.includes(category);
+                };
+
+                const loadCommands = async () => {
+                    try {
+                        const res = await fetch('/api/collection-commands');
+                        const data = await res.json();
+                        if (data.success) {
+                            allCommands.value = data.data;
+                            categories.value = Object.keys(data.data);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('加载命令失败');
+                    }
+                };
+
+                const addCommand = async () => {
+                    if (!newCommand.value.category || !newCommand.value.command) {
+                        ElementPlus.ElMessage.warning('请填写分类和命令');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/collection-commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newCommand.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElementPlus.ElMessage.success('命令已添加');
+                            showAddCommandDialog.value = false;
+                            newCommand.value = { category: '', command: '', description: '' };
+                            await loadCommands();
+                        } else {
+                            ElementPlus.ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('添加失败');
+                    }
+                };
+
+                const showAddCommand = (category) => {
+                    newCommand.value.category = category;
+                    showAddCommandDialog.value = true;
+                };
+
+                const updateCommand = async () => {
+                    try {
+                        const res = await fetch('/api/collection-commands/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(editingCommand.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElementPlus.ElMessage.success('命令已更新');
+                            showEditCommandDialog.value = false;
+                            await loadCommands();
+                        } else {
+                            ElementPlus.ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('更新失败');
+                    }
+                };
+
+                const editCommand = (category, cmd) => {
+                    editingCommand.value = {
+                        category: category,
+                        old_command: cmd.command,
+                        new_command: cmd.command,
+                        new_description: cmd.description || ''
+                    };
+                    showEditCommandDialog.value = true;
+                };
+
+                const deleteCommand = async (category, command) => {
+                    try {
+                        const res = await fetch('/api/collection-commands/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ category, command })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElementPlus.ElMessage.success('命令已删除');
+                            await loadCommands();
+                        } else {
+                            ElementPlus.ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('删除失败');
+                    }
+                };
+
+                const addCategory = async () => {
+                    if (!newCategory.value.category) {
+                        ElementPlus.ElMessage.warning('请填写分类名称');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/collection-commands/categories', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newCategory.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElementPlus.ElMessage.success('分类已添加');
+                            showAddCategoryDialog.value = false;
+                            newCategory.value = { category: '' };
+                            await loadCommands();
+                        } else {
+                            ElementPlus.ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('添加失败');
+                    }
+                };
+
+                const deleteCategory = async (category) => {
+                    try {
+                        const res = await fetch(`/api/collection-commands/categories/${category}`, {
+                            method: 'DELETE'
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElementPlus.ElMessage.success('分类已删除');
+                            await loadCommands();
+                        } else {
+                            ElementPlus.ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElementPlus.ElMessage.error('删除失败');
+                    }
+                };
+
+                const testCommand = async (command) => {
+                    testCommandText.value = command;
+                    testResult.value = '';
+                    showTestDialog.value = true;
+                    try {
+                        const res = await fetch('/api/collection/execute', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command, timeout: 10 })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            testResult.value = data.data.output || '命令执行成功（无输出）';
+                        } else {
+                            testResult.value = '执行失败：' + (data.data.error || '未知错误');
+                        }
+                    } catch (e) {
+                        testResult.value = '执行失败：' + e.message;
+                    }
+                };
+
+                onMounted(() => {
+                    loadCommands();
+                });
+
+                return {
+                    allCommands, categories, showAddCommandDialog, showEditCommandDialog, showAddCategoryDialog, showTestDialog,
+                    newCommand, newCategory, editingCommand, testCommandText, testResult,
+                    isSystemCategory, loadCommands, addCommand, showAddCommand, updateCommand, editCommand, deleteCommand, addCategory, deleteCategory, testCommand
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>
