@@ -125,16 +125,12 @@ class CollectionCommandService:
     
     def update_command(self, category: str, old_command: str, 
                       new_command: str, new_description: str = "") -> bool:
-        """更新命令"""
+        """更新命令（允许修改所有命令）"""
         if category not in self.commands:
             return False
         
         for cmd in self.commands[category]:
             if cmd['command'] == old_command:
-                # 系统命令不能修改
-                if not cmd.get('is_custom', False):
-                    return False
-                
                 cmd['command'] = new_command
                 cmd['description'] = new_description
                 self._save_commands(self.commands)
@@ -144,14 +140,14 @@ class CollectionCommandService:
         return False
     
     def delete_command(self, category: str, command: str) -> bool:
-        """删除命令"""
+        """删除命令（允许删除所有命令）"""
         if category not in self.commands:
             return False
         
         original_count = len(self.commands[category])
         self.commands[category] = [
             cmd for cmd in self.commands[category]
-            if cmd['command'] != command or not cmd.get('is_custom', False)
+            if cmd['command'] != command
         ]
         
         deleted = len(self.commands[category]) < original_count
@@ -177,12 +173,8 @@ class CollectionCommandService:
         return True
     
     def delete_category(self, category: str) -> bool:
-        """删除分类（只能删除自定义分类）"""
+        """删除分类（允许删除所有分类）"""
         if category not in self.commands:
-            return False
-        
-        # 系统分类不能删除
-        if category in self.DEFAULT_COMMANDS:
             return False
         
         del self.commands[category]

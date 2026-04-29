@@ -248,6 +248,7 @@
                     <div class="nav-tabs">
                         <div class="nav-tab active" @click="currentTab = 'analysis'">🔍 性能分析</div>
                         <div class="nav-tab" @click="currentTab = 'history'; loadReports()">📄 历史报告</div>
+                        <div class="nav-tab" @click="currentTab = 'commands'; loadCommands()">📝 采集命令</div>
                         <div class="nav-tab" @click="currentTab = 'settings'; loadSettings()">⚙️ 系统设置</div>
                     </div>
                     
@@ -391,6 +392,53 @@
                                 </template>
                             </el-table-column>
                         </el-table>
+                    </div>
+                    
+                    <!-- 采集命令管理页面 -->
+                    <div v-if="currentTab === 'commands'">
+                        <div class="section-title">
+                            📝 采集命令管理
+                            <el-button size="small" type="primary" @click="showAddCommandDialog = true" style="float: right;">
+                                <i class="fas fa-plus"></i> 添加命令
+                            </el-button>
+                        </div>
+                        
+                        <div class="category-list">
+                            <div v-for="(commands, category) in allCommands" :key="category" class="category-card">
+                                <div class="category-header">
+                                    <div class="category-name">
+                                        <i class="fas fa-folder"></i> {{ category }}
+                                    </div>
+                                    <el-button size="small" @click="showAddCommand(category)" type="success" plain>
+                                        <i class="fas fa-plus"></i> 添加命令
+                                    </el-button>
+                                </div>
+                                
+                                <div class="command-list">
+                                    <div v-for="(cmd, index) in commands" :key="index" class="command-item">
+                                        <div class="command-info">
+                                            <div class="command-text">
+                                                <i class="fas fa-code"></i> {{ cmd.command }}
+                                            </div>
+                                            <div class="command-desc" v-if="cmd.description">
+                                                <i class="fas fa-info-circle"></i> {{ cmd.description }}
+                                            </div>
+                                        </div>
+                                        <div class="command-actions">
+                                            <el-button size="small" @click="testCommand(cmd.command)" type="info" plain>
+                                                <i class="fas fa-play"></i> 测试
+                                            </el-button>
+                                            <el-button size="small" @click="editCommand(category, cmd)" type="primary" plain>
+                                                <i class="fas fa-edit"></i> 编辑
+                                            </el-button>
+                                            <el-button size="small" @click="deleteCommand(category, cmd.command)" type="danger" plain>
+                                                <i class="fas fa-trash"></i> 删除
+                                            </el-button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- 系统设置页面 -->
@@ -602,6 +650,14 @@
                 const reportContent = ref('');
                 const currentTab = ref('analysis');
                 const reports = ref([]);
+                const allCommands = ref({});
+                const showAddCommandDialog = ref(false);
+                const showEditCommandDialog = ref(false);
+                const showTestDialog = ref(false);
+                const newCommand = ref({ category: '', command: '', description: '' });
+                const editingCommand = ref({ category: '', old_command: '', new_command: '', new_description: '' });
+                const testCommandText = ref('');
+                const testResult = ref('');
                 const settings = ref({
                     collection: {
                         duration_minutes: 10,
@@ -714,6 +770,118 @@
                         }
                     } catch (e) {
                         console.error('加载报告失败:', e);
+                    }
+                };
+                
+                const loadCommands = async () => {
+                    try {
+                        const res = await fetch('/api/collection-commands');
+                        const data = await res.json();
+                        if (data.success) {
+                            allCommands.value = data.data;
+                        }
+                    } catch (e) {
+                        console.error('加载命令失败:', e);
+                    }
+                };
+                
+                const showAddCommand = (category) => {
+                    newCommand.value.category = category;
+                    showAddCommandDialog.value = true;
+                };
+                
+                const addCommand = async () => {
+                    if (!newCommand.value.category || !newCommand.value.command) {
+                        ElMessage.warning('请填写分类和命令');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/collection-commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newCommand.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('命令已添加');
+                            showAddCommandDialog.value = false;
+                            newCommand.value = { category: '', command: '', description: '' };
+                            await loadCommands();
+                        } else {
+                            ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElMessage.error('添加失败');
+                    }
+                };
+                
+                const editCommand = (category, cmd) => {
+                    editingCommand.value = {
+                        category: category,
+                        old_command: cmd.command,
+                        new_command: cmd.command,
+                        new_description: cmd.description || ''
+                    };
+                    showEditCommandDialog.value = true;
+                };
+                
+                const updateCommand = async () => {
+                    try {
+                        const res = await fetch('/api/collection-commands/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(editingCommand.value)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('命令已更新');
+                            showEditCommandDialog.value = false;
+                            await loadCommands();
+                        } else {
+                            ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElMessage.error('更新失败');
+                    }
+                };
+                
+                const deleteCommand = async (category, command) => {
+                    try {
+                        const res = await fetch('/api/collection-commands/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ category, command })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            ElMessage.success('命令已删除');
+                            await loadCommands();
+                        } else {
+                            ElMessage.error(data.error);
+                        }
+                    } catch (e) {
+                        ElMessage.error('删除失败');
+                    }
+                };
+                
+                const testCommand = async (command) => {
+                    testCommandText.value = command;
+                    testResult.value = '';
+                    showTestDialog.value = true;
+                    try {
+                        const res = await fetch('/api/collection/execute', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command, timeout: 10 })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            testResult.value = data.data.output || '命令执行成功（无输出）';
+                        } else {
+                            testResult.value = '执行失败：' + (data.data.error || '未知错误');
+                        }
+                    } catch (e) {
+                        testResult.value = '执行失败：' + e.message;
                     }
                 };
                 
@@ -1007,11 +1175,13 @@
                 
                 return {
                     targets, selectedTarget, providers, availableModels, selectedProvider, selectedModel,
-                    analyzing, analysisMode, currentTaskId, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig, settings,
+                    analyzing, analysisMode, currentTaskId, taskStatus, taskProgress, currentStep, reportContent, currentTab, reports, llmConfig, settings, allCommands,
+                    showAddCommandDialog, showEditCommandDialog, showTestDialog, newCommand, editingCommand, testCommandText, testResult,
                     knowledgeDocs, docContent, docDialogVisible, commandsDialogVisible, quickCommands, renderedReport, renderedDocContent,
                     addTargetDialogVisible, newTarget,
                     selectTarget, showAddTargetDialog, addTarget, onProviderChange, getProviderLabel, startAnalysis, stopAnalysis,
-                    loadReports, loadSettings, saveSettings, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport
+                    loadReports, loadCommands, loadSettings, saveSettings, viewReport, deleteReport, viewDoc, showCommands, copyCommand, saveConfig, downloadReport,
+                    showAddCommand, addCommand, editCommand, updateCommand, deleteCommand, testCommand
                 };
             }
         });
@@ -1023,6 +1193,63 @@
         
         app.use(ElementPlus);
         app.mount('#app');
+    
+    <!-- 添加命令对话框 -->
+    <el-dialog v-model="showAddCommandDialog" title="添加采集命令" width="600px">
+        <el-form :model="newCommand" label-width="80px">
+            <el-form-item label="分类" required>
+                <el-select v-model="newCommand.category" placeholder="选择或输入分类" style="width: 100%;" allow-create filterable>
+                    <el-option v-for="cat in Object.keys(allCommands)" :key="cat" :label="cat" :value="cat" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="命令" required>
+                <el-input v-model="newCommand.command" placeholder="如：top -bn1 | head -20" />
+            </el-form-item>
+            <el-form-item label="描述">
+                <el-input v-model="newCommand.description" placeholder="命令用途说明" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showAddCommandDialog = false">取消</el-button>
+            <el-button type="primary" @click="addCommand">添加</el-button>
+        </template>
+    </el-dialog>
+    
+    <!-- 编辑命令对话框 -->
+    <el-dialog v-model="showEditCommandDialog" title="编辑采集命令" width="600px">
+        <el-form :model="editingCommand" label-width="80px">
+            <el-form-item label="命令" required>
+                <el-input v-model="editingCommand.new_command" placeholder="命令内容" />
+            </el-form-item>
+            <el-form-item label="描述">
+                <el-input v-model="editingCommand.new_description" placeholder="命令用途说明" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showEditCommandDialog = false">取消</el-button>
+            <el-button type="primary" @click="updateCommand">保存</el-button>
+        </template>
+    </el-dialog>
+    
+    <!-- 命令测试对话框 -->
+    <el-dialog v-model="showTestDialog" title="测试命令" width="700px">
+        <div style="margin-bottom: 16px;">
+            <strong>命令：</strong>
+            <code style="background: #f5f5f5; padding: 8px; border-radius: 4px; display: block; margin-top: 8px;">{{ testCommandText }}</code>
+        </div>
+        <div v-if="testResult">
+            <strong>执行结果：</strong>
+            <pre style="background: #f9f9f9; padding: 12px; border-radius: 4px; max-height: 400px; overflow: auto; margin-top: 8px;">{{ testResult }}</pre>
+        </div>
+        <div v-else style="text-align: center; padding: 40px; color: #999;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i>
+            <p style="margin-top: 12px;">执行中...</p>
+        </div>
+        <template #footer>
+            <el-button @click="showTestDialog = false">关闭</el-button>
+        </template>
+    </el-dialog>
+    
     </script>
 </body>
 </html>
