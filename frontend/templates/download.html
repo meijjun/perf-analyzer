@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目打包下载 - 性能分析器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .download-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .title {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .title p {
+            color: #999;
+            font-size: 14px;
+        }
+        .version-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .options {
+            margin: 24px 0;
+        }
+        .option-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .option-item input {
+            margin-right: 12px;
+        }
+        .option-label {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+        }
+        .option-desc {
+            font-size: 12px;
+            color: #999;
+        }
+        .download-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        }
+        .download-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .package-info {
+            margin-top: 24px;
+            padding: 16px;
+            background: #f0f0ff;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .package-info strong {
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="download-card">
+            <div class="title">
+                <span class="version-badge">v{{ version }}</span>
+                <h1>📦 项目打包下载</h1>
+                <p>自动压缩项目，方便部署和测试</p>
+            </div>
+            
+            <div class="options">
+                <div class="option-item">
+                    <el-radio-group v-model="packageFormat" size="large">
+                        <el-radio-button label="zip">ZIP</el-radio-button>
+                        <el-radio-button label="tar.gz">TAR.GZ</el-radio-button>
+                    </el-radio-group>
+                </div>
+                
+                <div class="option-item">
+                    <el-checkbox v-model="includeData">包含 data 目录</el-checkbox>
+                    <span class="option-desc">配置文件、数据库等</span>
+                </div>
+                
+                <div class="option-item">
+                    <el-checkbox v-model="includeLogs">包含 logs 目录</el-checkbox>
+                    <span class="option-desc">日志文件（可选）</span>
+                </div>
+            </div>
+            
+            <button class="download-btn" @click="downloadPackage" :disabled="downloading">
+                <i class="fas" :class="downloading ? 'fa-spinner fa-spin' : 'fa-download'"></i>
+                {{ downloading ? '打包中...' : '立即下载' }}
+            </button>
+            
+            <div v-if="packageInfo" class="package-info">
+                <div><strong>最新版本:</strong> {{ packageInfo.filename }}</div>
+                <div><strong>文件大小:</strong> {{ packageInfo.size_mb }} MB</div>
+                <div><strong>构建时间:</strong> {{ packageInfo.created }}</div>
+            </div>
+            
+            <div style="margin-top: 24px; text-align: center; font-size: 12px; color: #999;">
+                <p>包含内容：backend/ frontend/ config/ VERSION.json</p>
+                <p>项目地址：<a href="https://github.com/meijjun/perf-analyzer" target="_blank">github.com/meijjun/perf-analyzer</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-plus@2.4.2/dist/index.full.min.js"></script>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const version = ref('1.0.0');
+                const packageFormat = ref('zip');
+                const includeData = ref(false);
+                const includeLogs = ref(false);
+                const downloading = ref(false);
+                const packageInfo = ref(null);
+
+                const loadVersion = async () => {
+                    try {
+                        const res = await fetch('/api/version');
+                        const data = await res.json();
+                        if (data.success) {
+                            version.value = data.data.version;
+                        }
+                    } catch (e) {
+                        console.error('加载版本失败:', e);
+                    }
+                };
+
+                const loadLatestPackage = async () => {
+                    try {
+                        const res = await fetch('/api/package/latest');
+                        const data = await res.json();
+                        if (data.success && data.data) {
+                            packageInfo.value = data.data;
+                        }
+                    } catch (e) {
+                        console.error('加载包信息失败:', e);
+                    }
+                };
+
+                const downloadPackage = async () => {
+                    downloading.value = true;
+                    try {
+                        // 创建新包
+                        const createRes = await fetch('/api/package/create', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                format: packageFormat.value,
+                                include_data: includeData.value,
+                                include_logs: includeLogs.value
+                            })
+                        });
+                        
+                        const createData = await createRes.json();
+                        
+                        if (createData.success) {
+                            // 下载文件
+                            const filename = createData.data.filename;
+                            window.location.href = `/api/package/download?filename=${filename}`;
+                            
+                            // 更新包信息
+                            await loadLatestPackage();
+                            
+                            ElementPlus.ElMessage.success('项目包已创建并开始下载');
+                        } else {
+                            ElementPlus.ElMessage.error('创建失败：' + createData.error);
+                        }
+                    } catch (e) {
+                        console.error('下载失败:', e);
+                        ElementPlus.ElMessage.error('下载失败');
+                    } finally {
+                        downloading.value = false;
+                    }
+                };
+
+                onMounted(() => {
+                    loadVersion();
+                    loadLatestPackage();
+                });
+
+                return {
+                    version, packageFormat, includeData, includeLogs, downloading, packageInfo,
+                    downloadPackage
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

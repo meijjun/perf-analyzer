@@ -24,6 +24,7 @@ from services.optimizer_service import create_optimizer
 from services.baseline_service import get_baseline_service
 from services.settings_service import get_settings_service
 from services.collection_command_service import get_collection_command_service
+from services.package_service import get_package_service
 from models.config import ConfigManager
 
 # 配置日志
@@ -63,6 +64,7 @@ running_tasks = {}
 config_manager = ConfigManager('../config/config.yaml')
 settings_service = get_settings_service()
 command_service = get_collection_command_service()
+package_service = get_package_service()
 llm_service = LLMService(config_manager)
 ssh_service = SSHService()
 analysis_service = AnalysisService(llm_service, ssh_service)
@@ -898,6 +900,154 @@ def update_settings():
 def commands_manage():
     """采集命令管理页面"""
     return render_template('commands-manage.html')
+
+
+@app.route('/download')
+def download_page():
+    """项目打包下载页面"""
+    return render_template('download.html')
+
+
+# ==================== 打包下载 API ====================
+
+@app.route('/api/package/create', methods=['POST'])
+def create_package():
+    """创建项目包"""
+    try:
+        data = request.json or {}
+        format = data.get('format', 'zip')
+        include_data = data.get('include_data', False)
+        include_logs = data.get('include_logs', False)
+        
+        success, result = package_service.create_package(
+            format=format,
+            include_data=include_data,
+            include_logs=include_logs
+        )
+        
+        if success:
+            package_info = package_service.get_package_info(result)
+            return jsonify({
+                'success': True,
+                'message': '项目包已创建',
+                'data': {
+                    'path': result,
+                    'filename': package_info['filename'],
+                    'size_mb': package_info['size_mb']
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result
+            }), 400
+    except Exception as e:
+        logger.error(f"创建项目包失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/package/download')
+def download_package():
+    """下载项目包"""
+    try:
+        filename = request.args.get('filename')
+        
+        if not filename:
+            # 如果没有指定文件名，创建最新的包
+            success, result = package_service.create_package()
+            if not success:
+                return jsonify({
+                    'success': False,
+                    'error': result
+                }), 400
+            filename = Path(result).name
+        
+        # 查找文件
+        build_dir = Path('../build')
+        package_path = build_dir / filename
+        
+        if not package_path.exists():
+            # 尝试查找最新的包
+            packages = list(build_dir.glob('perf-analyzer-v*.zip'))
+            if packages:
+                package_path = sorted(packages)[-1]
+                filename = package_path.name
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': '项目包不存在'
+                }), 404
+        
+        from flask import send_file
+        return send_file(
+            package_path,
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"下载项目包失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/package/latest')
+def get_latest_package():
+    """获取最新项目包信息"""
+    try:
+        build_dir = Path('../build')
+        packages = list(build_dir.glob('perf-analyzer-v*.zip'))
+        
+        if not packages:
+            return jsonify({
+                'success': True,
+                'data': None
+            })
+        
+        # 获取最新的包
+        latest = sorted(packages)[-1]
+        info = package_service.get_package_info(str(latest))
+        
+        return jsonify({
+            'success': True,
+            'data': info
+        })
+    except Exception as e:
+        logger.error(f"获取项目包信息失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+
+@app.route('/api/version')
+def get_version():
+    """获取版本信息"""
+    try:
+        version = package_service.get_version()
+        
+        version_file = Path('../VERSION.json')
+        if version_file.exists():
+            import json
+            with open(version_file, 'r', encoding='utf-8') as f:
+                version_data = json.load(f)
+        else:
+            version_data = {'version': version}
+        
+        return jsonify({
+            'success': True,
+            'data': version_data
+        })
+    except Exception as e:
+        logger.error(f"获取版本信息失败：{e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
 
 
 # ==================== 主程序 ====================
